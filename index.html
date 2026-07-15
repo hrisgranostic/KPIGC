@@ -11,7 +11,7 @@
         color: white;
       }
 
-      /* FIX PRINT: Hancurkan limitasi agar tabel dan halaman mengalir sempurna ke bawah */
+      /* FIX PRINT: Tabel dan halaman mengalir sempurna ke bawah */
       @media print {
         @page {
           size: landscape;
@@ -52,6 +52,7 @@
           box-shadow: none;
           padding: 0;
           margin: 0;
+          page-break-after: auto;
         }
         select,
         input {
@@ -73,11 +74,17 @@
         }
         table {
           page-break-inside: auto;
+          table-layout: fixed; /* Mencegah tabel terpotong/meluber */
+          width: 100%;
         }
         tr {
           page-break-inside: avoid;
           page-break-after: auto;
           break-inside: avoid;
+        }
+        td, th {
+          word-wrap: break-word; /* Mencegah teks panjang merusak layout cetak */
+          white-space: normal;
         }
         .page-break {
           page-break-before: always;
@@ -611,7 +618,6 @@
                 <p class="font-bold underline mt-2" id="ttdVerif2Nama">
                   Deiky Catur Hadi, S.Pd
                 </p>
-                <!-- Menjaga title tetap profesional sesuai kesepakatan -->
                 <p class="text-[9px] text-gray-500" id="ttdVerif2Jabatan">
                   HRGA & IT Manager
                 </p>
@@ -988,6 +994,7 @@
           else if (kEmail === myEmail) canView = true;
           else if (directSubordinates.includes(kEmail)) canView = true;
           else if (accLevel === "MANAGER" && kDept === myDept) canView = true;
+          
           if (canView)
             dropdown.innerHTML += `<option value="${k.nik}">${k.nama} (${k.jabatan})</option>`;
         });
@@ -1018,15 +1025,21 @@
         document.getElementById("nikDinilai").innerText = staf.nik;
         document.getElementById("ttdStaff").innerText = staf.nama;
 
+        // Fiksasi Penilai: Hanya mengambil penilai berdasarkan Struktur GSheet
         const strukturLink = MOCK_STRUKTUR.find(
           (s) => (s.email_staf_dinilai || "").trim().toLowerCase() === stafEmail
         );
+        
         let atasanEmail = strukturLink
           ? (strukturLink.email_penilai || "").trim().toLowerCase()
           : "";
-        let atasanObj = MOCK_KARYAWAN.find(
-          (k) => (k.email || "").trim().toLowerCase() === atasanEmail
-        );
+          
+        let atasanObj = null;
+        if (atasanEmail) {
+            atasanObj = MOCK_KARYAWAN.find(
+              (k) => (k.email || "").trim().toLowerCase() === atasanEmail
+            );
+        }
         if (!atasanObj) atasanObj = { nama: "-", jabatan: "-", email: "-" };
 
         document.getElementById("ttdAtasan").innerText = atasanObj.nama;
@@ -1050,7 +1063,6 @@
           email: "",
         };
         
-        // REFACTORING "HR" - Logika diubah, Title visual dipertahankan
         const hrObj = MOCK_KARYAWAN.find(
           (k) =>
             (k.departemen || "").toLowerCase().includes("hr") &&
@@ -1069,7 +1081,6 @@
         if (stafRole.includes("manager") || stafRole.includes("mgr")) {
           verif1Obj = direkturObj;
           sahkanObj = dirUtamaObj;
-          // REFACTORING "HR"
           if (stafRole.includes("hr")) {
             verif2Obj = direkturObj;
           }
@@ -1110,7 +1121,6 @@
         document.getElementById("ttdVerif1Jabatan").innerText =
           verif1Obj.jabatan;
         document.getElementById("ttdVerif2Nama").innerText = verif2Obj.nama;
-        // Jabatan dipertahankan sesuai aslinya
         document.getElementById("ttdVerif2Jabatan").innerText =
           verif2Obj.jabatan;
         document.getElementById("ttdDisahkanNama").innerText = sahkanObj.nama;
@@ -1120,6 +1130,8 @@
         const myEmail = (currentUser.email || "").trim().toLowerCase();
         const accLevel = getAccessLevel(currentUser);
         const isSelf = stafEmail === myEmail;
+        
+        // Memastikan hak edit hanya untuk atasan sesuai Struktur
         const canEdit = !isSelf && myEmail === atasanEmail;
 
         if (!canEdit) {
@@ -1166,7 +1178,6 @@
           return html;
         };
 
-        // Penambahan filter input validation (replace karakter < dan >)
         const renderInput = (place) => {
           const dis = !canEdit
             ? "disabled class='w-full p-1.5 border rounded text-xs bg-gray-100 text-gray-400 outline-none'"
@@ -1517,7 +1528,6 @@
         )
           document.getElementById("qrAtasan").classList.remove("opacity-0");
         
-        // REFACTORING "HR" - Logika diubah agar QR Code mengenali TERVERIFIKASI_HR
         if (
           stat.includes("TERVERIFIKASI_ATASAN") ||
           stat.includes("TERVERIFIKASI_MANAGER") ||
@@ -1662,7 +1672,6 @@
           return;
         }
         
-        // Peningkatan Keamanan Buka Kunci
         const konfirmasi = prompt("PERINGATAN: Membuka kunci dokumen yang sudah DISAHKAN akan MEMBATALKAN status pengesahan.\n\nKetik kata 'REVISI' untuk melanjutkan:");
         if (konfirmasi !== "REVISI") {
           alert("Pembukaan kunci dibatalkan.");
@@ -1765,6 +1774,7 @@
         }
       }
 
+      // FIKSASI ATASAN: Logika pencarian atasan kini sepenuhnya berlandaskan GSheet
       async function renderRekap() {
         const myEmail = (currentUser.email || "").trim().toLowerCase();
         const myDept = (currentUser.departemen || "").trim().toLowerCase();
@@ -1800,12 +1810,14 @@
               (s) =>
                 (s.email_staf_dinilai || "").trim().toLowerCase() === kEmail
             );
-            let aEmail = sLink ? sLink.email_penilai : "";
-            let aObj = MOCK_KARYAWAN.find(
-              (at) =>
-                (at.email || "").trim().toLowerCase() ===
-                (aEmail || "").trim().toLowerCase()
-            );
+            let aEmail = sLink ? (sLink.email_penilai || "").trim().toLowerCase() : "";
+            
+            let aObj = null;
+            if (aEmail) {
+              aObj = MOCK_KARYAWAN.find(
+                (at) => (at.email || "").trim().toLowerCase() === aEmail
+              );
+            }
             if (!aObj) aObj = { nama: "-" };
 
             const rec = hasil.find(
