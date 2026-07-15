@@ -77,6 +77,7 @@
         tr {
           page-break-inside: avoid;
           page-break-after: auto;
+          break-inside: avoid;
         }
         .page-break {
           page-break-before: always;
@@ -88,11 +89,12 @@
       }
       .avoid-break {
         page-break-inside: avoid;
+        break-inside: avoid;
       }
     </style>
   </head>
   <body class="bg-[#f0f4f8] font-sans text-gray-800 min-h-screen flex">
-    <!-- HALAMAN LOGIN (KEMBALI MENGGUNAKAN LOGO HIJAU AGAR TERLIHAT) -->
+    <!-- HALAMAN LOGIN -->
     <div
       id="loginView"
       class="min-h-screen w-full flex items-center justify-center p-4 fixed z-50 bg-[#f0f4f8]"
@@ -559,7 +561,7 @@
               </div>
             </div>
 
-            <!-- TANDA TANGAN BERJENJANG (LOGIKA STRUKTUR AKTIF) -->
+            <!-- TANDA TANGAN BERJENJANG -->
             <div
               class="print-flex flex flex-wrap justify-between text-center text-[10px] mt-8 pt-4 w-full text-black avoid-break"
             >
@@ -568,7 +570,6 @@
                   Yang Bersangkutan
                 </p>
                 <img id="qrStaff" src="" class="w-14 h-14 border p-1 my-1" />
-                <!-- Selalu Muncul TTD Staf -->
                 <p class="font-bold underline mt-2" id="ttdStaff">...</p>
                 <p class="text-[9px] text-gray-500">Karyawan</p>
               </div>
@@ -610,6 +611,7 @@
                 <p class="font-bold underline mt-2" id="ttdVerif2Nama">
                   Deiky Catur Hadi, S.Pd
                 </p>
+                <!-- Menjaga title tetap profesional sesuai kesepakatan -->
                 <p class="text-[9px] text-gray-500" id="ttdVerif2Jabatan">
                   HRGA & IT Manager
                 </p>
@@ -661,9 +663,12 @@
                     class="text-[10px] font-bold text-gray-500 uppercase mb-1 block"
                     >Tulis Catatan / Alasan Perubahan:</label
                   >
+                  <!-- Validasi Input ditambahkan disini -->
                   <input
                     type="text"
                     id="alasanLog"
+                    maxlength="250"
+                    oninput="this.value = this.value.replace(/[<>]/g, '')"
                     placeholder="Tulis alasan jika mengubah/menyimpan nilai..."
                     class="w-full p-2 border border-gray-300 rounded bg-white text-xs focus:border-teal-500 outline-none"
                   />
@@ -692,10 +697,10 @@
                   </button>
                   <button
                     id="btnVerifikasi2"
-                    onclick="updateStatus('TERVERIFIKASI_HRGA')"
+                    onclick="updateStatus('TERVERIFIKASI_HR')"
                     class="hidden bg-purple-600 text-white px-4 py-2 rounded font-bold text-xs hover:bg-purple-700 transition shadow-sm"
                   >
-                    ✔️ Verif HRGA
+                    ✔️ Verif HR
                   </button>
                   <button
                     id="btnSahkan"
@@ -810,8 +815,6 @@
     <script>
       // ============================================================
       // GANTI URL di bawah dengan Web app URL hasil deploy Code.gs baru.
-      // (Kalau Anda hanya redeploy versi baru di script yang sama,
-      //  URL biasanya TETAP sama seperti di bawah.)
       // ============================================================
       const API_URL =
         "https://script.google.com/macros/s/AKfycbyZcQNZAjRsgKTVbh4rmgMIUXWMzVboueEOZOdnJaLaniiGkUsEEc-1jpRzhHPP8G2Lqg/exec";
@@ -824,7 +827,7 @@
         auditTrails = [],
         currentDocumentStatus = "DRAFT";
 
-      // state dokumen yang sedang dibuka (untuk keperluan simpan)
+      // state dokumen yang sedang dibuka
       let currentStaf = null;
       let chainAtasan = null,
         chainVerif1 = null,
@@ -838,7 +841,7 @@
         total: 0,
         grade: "Grade E",
       };
-      // status validasi bobot (Hard & Soft harus 100%)
+      
       let bobotState = {
         hardSum: 0,
         softSum: 0,
@@ -847,19 +850,16 @@
         ok: true,
       };
 
-      // ---------- HELPER KOMUNIKASI KE BACKEND (POST + token) ----------
-      // Semua permintaan data lewat POST dan menyertakan token sesi.
       async function apiCall(action, extra) {
         return await _post(Object.assign({ action: action, token: authToken }, extra || {}));
       }
 
       async function apiPost(payload) {
-        payload.token = authToken; // sisipkan token sesi ke payload simpan
+        payload.token = authToken; 
         return await _post(payload);
       }
 
       async function _post(payload) {
-        // Content-Type text/plain agar tidak memicu CORS preflight ke Apps Script
         const res = await fetch(API_URL, {
           method: "POST",
           headers: { "Content-Type": "text/plain;charset=utf-8" },
@@ -876,7 +876,6 @@
         return j;
       }
 
-      // Data master hanya boleh dimuat SETELAH login (butuh token).
       async function loadMasterData() {
         const [rK, rI, rS] = await Promise.all([
           apiCall("getKaryawan"),
@@ -888,7 +887,6 @@
         MOCK_STRUKTUR = (rS && rS.data) || [];
       }
 
-      // Saat halaman dibuka: TIDAK memuat data apa pun (belum ada token).
       window.onload = function () {
         document.getElementById("btnLogin").innerText = "Masuk Sistem";
       };
@@ -913,9 +911,6 @@
         if (menu === "rekap") renderRekap();
       }
 
-      // --- SISTEM HAK AKSES ---
-      // Hak akses dibaca dari kolom Role + flag SuperAdmin (bukan dari teks Jabatan).
-      // SUPER_ADMIN bila flag SuperAdmin=YES ATAU Role=Direksi.
       function getAccessLevel(user) {
         if (!user) return "STAFF";
         const sa =
@@ -930,7 +925,6 @@
         return "STAFF";
       }
 
-      // ---------- LOGIN (DICEK DI SERVER) ----------
       document
         .getElementById("loginForm")
         .addEventListener("submit", async (e) => {
@@ -950,10 +944,10 @@
               password: pw,
             });
             if (j.ok && j.user) {
-              authToken = j.token; // simpan tiket sesi
-              currentUser = j.user; // profil dari server, TANPA password
+              authToken = j.token;
+              currentUser = j.user;
               btn.innerText = "Memuat data...";
-              await loadMasterData(); // data hanya dimuat SETELAH login
+              await loadMasterData();
               document.getElementById("loginView").classList.add("hidden");
               document.getElementById("mainView").classList.remove("hidden");
               document.getElementById("loggedUserName").innerText =
@@ -1055,9 +1049,11 @@
           jabatan: "Direktur",
           email: "",
         };
-        const hrgaObj = MOCK_KARYAWAN.find(
+        
+        // REFACTORING "HR" - Logika diubah, Title visual dipertahankan
+        const hrObj = MOCK_KARYAWAN.find(
           (k) =>
-            (k.departemen || "").toLowerCase().includes("hrga") &&
+            (k.departemen || "").toLowerCase().includes("hr") &&
             (k.jabatan || "").toLowerCase().includes("manager")
         ) || {
           nama: "Deiky Catur Hadi, S.Pd",
@@ -1067,13 +1063,14 @@
 
         const atasanRole = (atasanObj.jabatan || "").trim().toLowerCase();
         let verif1Obj = { nama: "-", jabatan: "-", email: "-" };
-        let verif2Obj = hrgaObj;
+        let verif2Obj = hrObj;
         let sahkanObj = direkturObj;
 
         if (stafRole.includes("manager") || stafRole.includes("mgr")) {
           verif1Obj = direkturObj;
           sahkanObj = dirUtamaObj;
-          if (stafRole.includes("hrga")) {
+          // REFACTORING "HR"
+          if (stafRole.includes("hr")) {
             verif2Obj = direkturObj;
           }
         } else if (
@@ -1104,7 +1101,6 @@
           }
         }
 
-        // simpan rantai penanda tangan untuk keperluan payload simpan
         chainAtasan = atasanObj;
         chainVerif1 = verif1Obj;
         chainVerif2 = verif2Obj;
@@ -1114,6 +1110,7 @@
         document.getElementById("ttdVerif1Jabatan").innerText =
           verif1Obj.jabatan;
         document.getElementById("ttdVerif2Nama").innerText = verif2Obj.nama;
+        // Jabatan dipertahankan sesuai aslinya
         document.getElementById("ttdVerif2Jabatan").innerText =
           verif2Obj.jabatan;
         document.getElementById("ttdDisahkanNama").innerText = sahkanObj.nama;
@@ -1122,9 +1119,6 @@
 
         const myEmail = (currentUser.email || "").trim().toLowerCase();
         const accLevel = getAccessLevel(currentUser);
-        // ATURAN: tidak seorang pun boleh menilai DIRINYA SENDIRI.
-        // ATURAN: hanya PENILAI yang ditunjuk (atasanEmail) yang boleh mengubah nilai.
-        //         Super admin TIDAK boleh menimpa hasil penilaian penilai.
         const isSelf = stafEmail === myEmail;
         const canEdit = !isSelf && myEmail === atasanEmail;
 
@@ -1168,16 +1162,16 @@
               `<button type="button" data-val="${v}" ${btnDis} onclick="setSkor(this)" ` +
               `class="skor-btn w-5 h-6 text-[10px] font-bold border border-gray-300 rounded bg-white text-slate-600 ${cursor}">${v}</button>`;
           }
-          // angka untuk versi CETAK (tombol otomatis disembunyikan saat print)
           html += `<span class="skor-print print-only font-bold text-sm">-</span></div>`;
           return html;
         };
 
+        // Penambahan filter input validation (replace karakter < dan >)
         const renderInput = (place) => {
           const dis = !canEdit
             ? "disabled class='w-full p-1.5 border rounded text-xs bg-gray-100 text-gray-400 outline-none'"
-            : "class='w-full p-1.5 border border-gray-300 rounded text-xs text-left bg-white focus:border-teal-500 outline-none'";
-          return `<input type="text" placeholder="${place}" ${dis}>`;
+            : "class='w-full p-1.5 border border-gray-300 rounded text-xs text-left bg-white focus:border-teal-500 outline-none' maxlength='250'";
+          return `<input type="text" placeholder="${place}" ${dis} oninput="this.value = this.value.replace(/[<>]/g, '')">`;
         };
 
         globalMasterIndikator.forEach((item) => {
@@ -1266,12 +1260,9 @@
         simpanLog(`Dokumen dibuka / dimuat.`);
         kalkulasi();
         applyLockState();
-
-        // muat nilai yang sudah tersimpan (kalau ada) dari database
         muatHasilTersimpan(stafEmail);
       }
 
-      // ---------- MUAT HASIL TERSIMPAN DARI DATABASE ----------
       async function muatHasilTersimpan(stafEmail) {
         try {
           const periode = document.getElementById("periodeFilter").value;
@@ -1279,7 +1270,7 @@
           const rec = ((j && j.data) || []).find(
             (r) => (r.emailStaf || "").toLowerCase() === stafEmail
           );
-          if (!rec) return; // belum ada -> biarkan kosong
+          if (!rec) return; 
 
           currentDocumentStatus = rec.status || "DRAFT";
           document.getElementById(
@@ -1290,7 +1281,6 @@
           terapkanSkor("hardSkillTable", d.hard || []);
           terapkanSkor("softSkillTable", d.soft || []);
 
-          // QR arahkan ke halaman verifikasi (bila server menyediakan verifyUrl)
           if (rec.verifyUrl) {
             const qr =
               "https://api.qrserver.com/v1/create-qr-code/?size=75x75&data=";
@@ -1308,9 +1298,7 @@
             `Memuat nilai tersimpan (status: ${currentDocumentStatus}).`
           );
           applyLockState();
-        } catch (e) {
-          /* diamkan: kalau gagal, tetap tampil form kosong */
-        }
+        } catch (e) {}
       }
 
       function terapkanSkor(tableId, arr) {
@@ -1325,13 +1313,11 @@
         });
       }
 
-      // ---------- TOMBOL SKOR 1-5 ----------
       function setSkor(btn) {
         const group = btn.closest(".skor-group");
         if (!group) return;
         const val = Number(btn.getAttribute("data-val")) || 0;
         const input = group.querySelector(".kpi-val-input");
-        // ketuk tombol yang sama = batalkan (kembali ke 0)
         input.value = String(Number(input.value) === val ? 0 : val);
         paintGroup(group);
         kalkulasi();
@@ -1353,7 +1339,6 @@
         if (printSpan) printSpan.innerText = val === 0 ? "-" : String(val);
       }
 
-      // ---------- KUMPULKAN SKOR DARI TABEL ----------
       function ambilSkorSection(tableId, bobotClass) {
         const sels = document.querySelectorAll(`#${tableId} .kpi-val-input`);
         const notes = document.querySelectorAll(`#${tableId} input[type='text']`);
@@ -1445,7 +1430,6 @@
           clr = "text-orange-600";
         }
 
-        // simpan hasil hitung terakhir untuk keperluan payload
         lastCalc = {
           sumHard: sumHard,
           propHard: propHard,
@@ -1459,7 +1443,6 @@
         gLbl.innerText = `Grade Hasil: ${grade}`;
         gLbl.className = `text-[10px] font-bold mt-1 uppercase ${clr}`;
 
-        // --- VALIDASI TOTAL BOBOT (Hard & Soft harus 100%) ---
         let totBobotHard = 0;
         hBobots.forEach(
           (b) => (totBobotHard += Number(b.getAttribute("data-bobot")) || 0)
@@ -1491,7 +1474,6 @@
           (count === 0 ? "text-gray-400" : ok ? "text-teal-700" : "text-red-600");
       }
 
-      // matikan tombol Simpan & Ajukan bila bobot belum 100%
       function updateSaveGuard() {
         const ok = bobotState.ok;
         ["btnSimpan", "btnAjukan"].forEach((id) => {
@@ -1534,14 +1516,16 @@
           stat.includes("DISAHKAN")
         )
           document.getElementById("qrAtasan").classList.remove("opacity-0");
+        
+        // REFACTORING "HR" - Logika diubah agar QR Code mengenali TERVERIFIKASI_HR
         if (
           stat.includes("TERVERIFIKASI_ATASAN") ||
           stat.includes("TERVERIFIKASI_MANAGER") ||
-          stat.includes("TERVERIFIKASI_HRGA") ||
+          stat.includes("TERVERIFIKASI_HR") ||
           stat.includes("DISAHKAN")
         )
           document.getElementById("qrVerif1").classList.remove("opacity-0");
-        if (stat.includes("TERVERIFIKASI_HRGA") || stat.includes("DISAHKAN"))
+        if (stat.includes("TERVERIFIKASI_HR") || stat.includes("DISAHKAN"))
           document.getElementById("qrVerif2").classList.remove("opacity-0");
         if (stat.includes("DISAHKAN"))
           document.getElementById("qrDireksi").classList.remove("opacity-0");
@@ -1556,7 +1540,6 @@
         document.getElementById("auditLog").innerHTML = auditTrails.join("");
       }
 
-      // ---------- SIMPAN NILAI KE DATABASE ----------
       async function simpanData() {
         if (!currentStaf) {
           alert("Pilih staf yang dinilai terlebih dahulu.");
@@ -1567,7 +1550,7 @@
           return;
         }
         const btn = document.getElementById("btnSimpan");
-        const note = document.getElementById("alasanLog").value;
+        const note = document.getElementById("alasanLog").value.replace(/[<>]/g, "");
         let msg = `Menyimpan skor/perubahan nilai KPI.`;
         if (note) msg += ` Catatan: <em>"${note}"</em>`;
         simpanLog(msg);
@@ -1592,18 +1575,16 @@
         }
       }
 
-      // ---------- UBAH STATUS + SIMPAN ----------
       async function updateStatus(statusBaru) {
         if (!currentStaf) {
           alert("Pilih staf yang dinilai terlebih dahulu.");
           return;
         }
-        // Ajukan hanya boleh bila bobot sudah 100%
         if (statusBaru === "PENILAIAN_SELESAI" && !bobotState.ok) {
           alert(bobotWarningMsg());
           return;
         }
-        const note = document.getElementById("alasanLog").value;
+        const note = document.getElementById("alasanLog").value.replace(/[<>]/g, "");
         let msg = `Mengubah status dokumen menjadi: <strong>${statusBaru}</strong>.`;
         if (note) msg += ` Catatan: <em>"${note}"</em>`;
 
@@ -1629,7 +1610,6 @@
         }
       }
 
-      // ---------- KUNCI SETELAH DISAHKAN + BUKA KUNCI ----------
       function applyLockState() {
         const status = (currentDocumentStatus || "").toUpperCase();
         const locked = status.indexOf("DISAHKAN") > -1;
@@ -1644,7 +1624,6 @@
         const btnBuka = document.getElementById("btnBukaKunci");
 
         if (locked) {
-          // kunci semua input skor & catatan (kolom alasan TIDAK dikunci)
           document
             .querySelectorAll(
               "#hardSkillTable .skor-btn, #softSkillTable .skor-btn"
@@ -1675,25 +1654,25 @@
       async function bukaKunci() {
         const alasan = (
           document.getElementById("alasanLog").value || ""
-        ).trim();
+        ).trim().replace(/[<>]/g, "");
         if (!alasan) {
           alert(
             "Wajib mengisi ALASAN di kolom catatan sebelum membuka kunci dokumen."
           );
           return;
         }
-        if (
-          !confirm(
-            "Buka kunci dokumen yang sudah DISAHKAN untuk direvisi?\nStatus pengesahan akan DIBATALKAN dan proses persetujuan harus diulang dari awal."
-          )
-        )
+        
+        // Peningkatan Keamanan Buka Kunci
+        const konfirmasi = prompt("PERINGATAN: Membuka kunci dokumen yang sudah DISAHKAN akan MEMBATALKAN status pengesahan.\n\nKetik kata 'REVISI' untuk melanjutkan:");
+        if (konfirmasi !== "REVISI") {
+          alert("Pembukaan kunci dibatalkan.");
           return;
+        }
+        
         await updateStatus("DIBUKA_REVISI");
-        // muat ulang lembar agar penilai bisa mengedit kembali
         renderKPI();
       }
 
-      // ---------- GANTI / RESET PASSWORD ----------
       let pwForced = false;
 
       function openGantiPassword(force) {
@@ -1705,13 +1684,12 @@
         document.getElementById("pwModalHint").innerText = force
           ? "Demi keamanan, Anda WAJIB mengganti password sebelum melanjutkan."
           : "Perbarui kata sandi Anda.";
-        // saat wajib ganti, tombol Batal disembunyikan
         document.getElementById("pwBtnBatal").style.display = force ? "none" : "";
         document.getElementById("pwModal").classList.remove("hidden");
       }
 
       function closeGantiPassword() {
-        if (pwForced) return; // tidak boleh ditutup saat wajib ganti
+        if (pwForced) return; 
         document.getElementById("pwModal").classList.add("hidden");
       }
 
@@ -1762,7 +1740,6 @@
         }
       }
 
-      // Reset password orang lain (hanya super admin, tombol muncul di Dashboard Global)
       async function resetPasswordAdmin(email) {
         const k =
           MOCK_KARYAWAN.find(
@@ -1788,7 +1765,6 @@
         }
       }
 
-      // ---------- REKAP GLOBAL (dari database) ----------
       async function renderRekap() {
         const myEmail = (currentUser.email || "").trim().toLowerCase();
         const myDept = (currentUser.departemen || "").trim().toLowerCase();
@@ -1808,7 +1784,6 @@
           return false;
         });
 
-        // ambil hasil tersimpan untuk periode aktif
         let hasil = [];
         try {
           const periode = document.getElementById("periodeFilter").value;
