@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Sistem KPI - Granostic Center</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     <style>
       .nav-btn.active {
         background-color: #00a693;
@@ -74,7 +77,12 @@
         }
         table {
           page-break-inside: auto;
-          table-layout: fixed; /* Mencegah tabel terpotong/meluber */
+          /* PENTING: table-layout AUTO (bukan fixed). Dengan "fixed", total lebar
+             kolom yang dipatok (mis. min-w-[200px] + w-32 + ...) melebihi lebar
+             kertas landscape sehingga kolom paling kanan (Catatan Realisasi)
+             kepotong. "auto" membuat browser menyusutkan proporsional supaya
+             seluruh tabel selalu pas dalam 1 halaman. */
+          table-layout: auto;
           width: 100%;
         }
         tr {
@@ -88,6 +96,12 @@
         }
         .page-break {
           page-break-before: always;
+        }
+        /* Audit trail ikut tercetak penuh (poin traceability), jangan terpotong
+           oleh scrollbar layar seperti saat di layar. */
+        #auditLog {
+          max-height: none !important;
+          overflow: visible !important;
         }
       }
       .print-only,
@@ -104,44 +118,77 @@
     <!-- HALAMAN LOGIN -->
     <div
       id="loginView"
-      class="min-h-screen w-full flex items-center justify-center p-4 fixed z-50 bg-[#f0f4f8]"
+      class="min-h-screen w-full flex items-center justify-center p-4 fixed z-50 bg-[#f0f4f8] overflow-y-auto"
     >
       <div
-        class="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md border-t-8 border-[#00A693] text-center"
+        class="w-full max-w-5xl flex flex-col md:flex-row items-stretch gap-6 my-8"
       >
-        <img
-          src="https://lh3.googleusercontent.com/d/13fYVo8GG4_R75m5fcqNieWpTnePyB0cb"
-          alt="Granostic Logo"
-          class="mx-auto h-16 mb-4 object-contain"
-        />
-        <p class="text-sm text-gray-500 mb-6 font-semibold">
-          Portal Penilaian Kinerja Karyawan (KPI)
-        </p>
-        <form id="loginForm" class="space-y-4 text-left">
-          <input
-            type="email"
-            id="email"
-            required
-            placeholder="Email Kerja"
-            autocomplete="off"
-            class="w-full p-3 border rounded-lg bg-gray-50 focus:bg-white transition"
+        <!-- PANEL FORM LOGIN -->
+        <div
+          class="bg-white p-8 rounded-2xl shadow-xl w-full md:w-[380px] md:flex-shrink-0 border-t-8 border-[#00A693] text-center flex flex-col justify-center"
+        >
+          <h2 class="text-xl font-bold text-[#00A693] tracking-wide mb-4">
+          PT. PERSADA MEDIKA UTAMA
+          </h2>
+          <p class="text-sm text-gray-500 mb-6 font-semibold">
+            Portal Penilaian Kinerja Karyawan (KPI)
+          </p>
+          <form id="loginForm" class="space-y-4 text-left">
+            <input
+              type="email"
+              id="email"
+              required
+              placeholder="Email Kerja"
+              autocomplete="off"
+              class="w-full p-3 border rounded-lg bg-gray-50 focus:bg-white transition"
+            />
+            <input
+              type="password"
+              id="pass"
+              required
+              placeholder="Kata Sandi"
+              autocomplete="off"
+              class="w-full p-3 border rounded-lg bg-gray-50 focus:bg-white transition"
+            />
+            <button
+              type="submit"
+              id="btnLogin"
+              class="w-full bg-[#00A693] text-white p-3 rounded-lg font-bold hover:bg-teal-700 transition"
+            >
+              Masuk Sistem
+            </button>
+          </form>
+        </div>
+
+        <!-- PANEL VISI-MISI & SLIDE OTOMATIS -->
+        <div
+          class="relative w-full flex-1 rounded-2xl shadow-xl overflow-hidden flex flex-col justify-center p-8 md:p-10 text-white"
+          style="background: linear-gradient(135deg, #00A693 0%, #0b6e60 100%);"
+        >
+          <!-- Aksen dekoratif -->
+          <div
+            class="absolute -right-10 -top-10 w-40 h-40 rounded-full bg-white/10"
+          ></div>
+          <div
+            class="absolute -left-8 -bottom-8 w-32 h-32 rounded-full bg-white/10"
+          ></div>
+
+          <img
+            src="https://lh3.googleusercontent.com/d/1Bo0fEb-lIgrCfHMjO8G6a4rd0L9rn5CC"
+            alt="Granostic"
+            class="h-14 mb-4 object-contain opacity-90 relative z-10"
           />
-          <input
-            type="password"
-            id="pass"
-            required
-            placeholder="Kata Sandi"
-            autocomplete="off"
-            class="w-full p-3 border rounded-lg bg-gray-50 focus:bg-white transition"
-          />
-          <button
-            type="submit"
-            id="btnLogin"
-            class="w-full bg-[#00A693] text-white p-3 rounded-lg font-bold hover:bg-teal-700 transition"
-          >
-            Masuk Sistem
-          </button>
-        </form>
+
+          <div
+            id="loginCarouselTrack"
+            class="relative min-h-[190px] md:min-h-[150px] z-10"
+          ></div>
+
+          <div
+            id="loginCarouselDots"
+            class="flex gap-2 mt-8 relative z-10"
+          ></div>
+        </div>
       </div>
     </div>
 
@@ -156,7 +203,7 @@
       >
         <div class="border-b border-slate-700 pb-4 mb-4 text-center">
           <img
-            src="https://lh3.googleusercontent.com/d/1Bo0fEb-lIgrCfHMjO8G6a4rd0L9rn5CC"
+            src="https://lh3.googleusercontent.com/d/13fYVo8GG4_R75m5fcqNieWpTnePyB0cb"
             class="w-4/5 mx-auto mb-3 object-contain"
           />
           <div class="text-white font-black tracking-wider text-sm mt-2">
@@ -185,6 +232,20 @@
             class="nav-btn w-full text-left p-3 rounded-lg text-sm transition"
           >
             📊 Dashboard Global
+          </button>
+          <button
+            onclick="switchMenu('grafik')"
+            id="btn-grafik"
+            class="nav-btn w-full text-left p-3 rounded-lg text-sm transition"
+          >
+            📈 Grafik Performa
+          </button>
+          <button
+            onclick="switchMenu('arsip')"
+            id="btn-arsip"
+            class="hidden nav-btn w-full text-left p-3 rounded-lg text-sm transition"
+          >
+            🗂️ Arsip &amp; Unduh Massal
           </button>
           <button
             onclick="openGantiPassword(false)"
@@ -225,12 +286,17 @@
             class="no-print bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex flex-wrap gap-4 items-center"
           >
             <select
-              id="periodeFilter"
+              id="tahunFilter"
+              class="p-2 border rounded-lg text-sm font-bold bg-gray-50 outline-none"
+              onchange="loadData()"
+            ></select>
+            <select
+              id="semesterFilter"
               class="p-2 border rounded-lg text-sm font-bold bg-gray-50 outline-none"
               onchange="loadData()"
             >
-              <option value="Semester 1 2026">Semester 1 2026</option>
-              <option value="Semester 2 2026">Semester 2 2026</option>
+              <option value="1">Semester I</option>
+              <option value="2">Semester II</option>
             </select>
             <select
               id="stafSelector"
@@ -646,14 +712,14 @@
               memindai QR di atas.
             </div>
 
-            <!-- AUDIT TRAIL LOG -->
+            <!-- AUDIT TRAIL LOG (sengaja TIDAK no-print supaya ikut tercetak & traceable oleh semua pihak) -->
             <div
-              class="bg-slate-50 rounded-lg border border-gray-200 p-4 no-print border-l-4 border-l-teal-600 mt-6 shadow-inner"
+              class="bg-slate-50 rounded-lg border border-gray-200 p-4 border-l-4 border-l-teal-600 mt-6 shadow-inner avoid-break"
             >
               <h3
                 class="font-bold border-b pb-2 mb-2 text-slate-700 text-[11px] uppercase tracking-wider flex items-center gap-2"
               >
-                <span>📜</span> AUDIT TRAIL(S) SECURITY LOG:
+                <span>📜</span> AUDIT TRAIL / RIWAYAT PERSETUJUAN (dapat dilihat semua pihak):
               </h3>
               <div
                 id="auditLog"
@@ -662,7 +728,7 @@
 
               <div
                 id="actionArea"
-                class="pt-3 border-t border-gray-300 flex flex-col lg:flex-row gap-3 items-end"
+                class="no-print pt-3 border-t border-gray-300 flex flex-col lg:flex-row gap-3 items-end"
               >
                 <div class="flex-grow w-full">
                   <label
@@ -682,42 +748,66 @@
                 <div class="flex flex-wrap gap-2" id="actionButtonsGroup">
                   <button
                     id="btnSimpan"
-                    onclick="simpanData()"
+                    onclick="kirimAksi('simpan')"
                     class="bg-gray-100 border border-gray-300 text-gray-700 px-4 py-2 rounded font-bold text-xs hover:bg-gray-200 transition shadow-sm"
                   >
                     💾 Simpan Nilai
                   </button>
                   <button
                     id="btnAjukan"
-                    onclick="updateStatus('PENILAIAN_SELESAI')"
+                    onclick="kirimAksi('ajukan')"
                     class="hidden bg-blue-600 text-white px-4 py-2 rounded font-bold text-xs hover:bg-blue-700 transition shadow-sm"
                   >
                     📤 Ajukan
                   </button>
                   <button
                     id="btnVerifikasi1"
-                    onclick="updateStatus('TERVERIFIKASI_ATASAN')"
+                    onclick="kirimAksi('verifikasi1')"
                     class="hidden bg-indigo-600 text-white px-4 py-2 rounded font-bold text-xs hover:bg-indigo-700 transition shadow-sm"
                   >
                     ✔️ Verifikasi
                   </button>
                   <button
+                    id="btnKembalikan1"
+                    onclick="kirimAksi('kembalikan1')"
+                    class="hidden bg-rose-100 border border-rose-300 text-rose-700 px-4 py-2 rounded font-bold text-xs hover:bg-rose-200 transition shadow-sm"
+                    title="Kembalikan ke atasan penilai untuk direvisi (wajib isi alasan)"
+                  >
+                    ↩️ Kembalikan
+                  </button>
+                  <button
                     id="btnVerifikasi2"
-                    onclick="updateStatus('TERVERIFIKASI_HR')"
+                    onclick="kirimAksi('verifikasi2')"
                     class="hidden bg-purple-600 text-white px-4 py-2 rounded font-bold text-xs hover:bg-purple-700 transition shadow-sm"
                   >
                     ✔️ Verif HR
                   </button>
                   <button
+                    id="btnKembalikan2"
+                    onclick="kirimAksi('kembalikan2')"
+                    class="hidden bg-rose-100 border border-rose-300 text-rose-700 px-4 py-2 rounded font-bold text-xs hover:bg-rose-200 transition shadow-sm"
+                    title="Kembalikan ke Verifikator 1 (wajib isi alasan)"
+                  >
+                    ↩️ Kembalikan
+                  </button>
+                  <button
                     id="btnSahkan"
-                    onclick="updateStatus('DISAHKAN_DIREKSI')"
+                    onclick="kirimAksi('sahkan')"
                     class="hidden bg-[#00A693] text-white px-4 py-2 rounded font-bold text-xs hover:bg-teal-700 transition shadow-sm"
                   >
                     ✅ Sahkan
                   </button>
                   <button
+                    id="btnKembalikan3"
+                    onclick="kirimAksi('kembalikan3')"
+                    class="hidden bg-rose-100 border border-rose-300 text-rose-700 px-4 py-2 rounded font-bold text-xs hover:bg-rose-200 transition shadow-sm"
+                    title="Kembalikan ke Verifikator HR (wajib isi alasan)"
+                  >
+                    ↩️ Kembalikan
+                  </button>
+                  <button
                     id="btnBukaKunci"
-                    onclick="bukaKunci()"
+                    onclick="kirimAksi('bukaKunci')"
                     class="hidden bg-red-600 text-white px-4 py-2 rounded font-bold text-xs hover:bg-red-700 transition shadow-sm"
                   >
                     🔓 Buka Kunci (Revisi)
@@ -731,9 +821,33 @@
         <!-- SEKSI 2: REKAPITULASI -->
         <div id="sec-rekap" class="hidden space-y-6 max-w-7xl mx-auto">
           <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-            <h2 class="text-lg font-black text-gray-800 mb-4 uppercase">
-              Rekapitulasi Global KPI Karyawan
-            </h2>
+            <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-4">
+              <h2 class="text-lg font-black text-gray-800 uppercase">
+                Rekapitulasi Global KPI Karyawan
+              </h2>
+              <div class="flex flex-col md:flex-row gap-2 w-full lg:w-auto">
+                <select
+                  id="rekapTahun"
+                  onchange="renderRekap()"
+                  class="p-2 border rounded-lg text-sm font-bold bg-gray-50 outline-none"
+                ></select>
+                <select
+                  id="rekapSemester"
+                  onchange="renderRekap()"
+                  class="p-2 border rounded-lg text-sm font-bold bg-gray-50 outline-none"
+                >
+                  <option value="1">Semester I</option>
+                  <option value="2">Semester II</option>
+                </select>
+                <input
+                  type="text"
+                  id="rekapSearch"
+                  oninput="renderRekap()"
+                  placeholder="🔎 Cari nama staf..."
+                  class="w-full md:w-64 p-2 border rounded-lg text-sm bg-gray-50 outline-none"
+                />
+              </div>
+            </div>
             <div class="overflow-x-auto">
               <table
                 class="w-full text-left text-sm border-collapse border border-gray-200"
@@ -759,7 +873,172 @@
             </div>
           </div>
         </div>
+
+        <!-- SEKSI BARU: GRAFIK PERFORMA (per orang & per departemen) -->
+        <div id="sec-grafik" class="hidden space-y-6 max-w-6xl mx-auto">
+          <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+            <div class="flex gap-2 border-b mb-5">
+              <button
+                id="tabGrafikOrang"
+                onclick="switchTabGrafik('orang')"
+                class="px-4 py-2 text-sm font-bold border-b-2 border-[#00A693] text-[#00A693]"
+              >
+                👤 Per Orang
+              </button>
+              <button
+                id="tabGrafikDept"
+                onclick="switchTabGrafik('dept')"
+                class="px-4 py-2 text-sm font-bold border-b-2 border-transparent text-gray-500"
+              >
+                🏢 Per Departemen
+              </button>
+            </div>
+
+            <!-- TAB PER ORANG -->
+            <div id="grafikOrangPanel">
+              <div class="flex flex-col md:flex-row gap-3 mb-3" id="grafikOrangSubTabWrap">
+                <button
+                  id="subTabTren"
+                  onclick="switchSubTabOrang('tren')"
+                  class="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#00A693] text-white"
+                >
+                  Tren Perorangan
+                </button>
+                <button
+                  id="subTabTim"
+                  onclick="switchSubTabOrang('tim')"
+                  class="hidden px-3 py-1.5 rounded-lg text-xs font-bold bg-gray-100 text-gray-600"
+                >
+                  Perbandingan Tim
+                </button>
+              </div>
+
+              <!-- Sub-tab: Tren Perorangan -->
+              <div id="grafikTrenPanel">
+                <div class="flex flex-col md:flex-row gap-3 mb-4">
+                  <input
+                    type="text"
+                    id="grafikOrangSearch"
+                    oninput="populateGrafikOrangDropdown()"
+                    placeholder="🔎 Cari nama staf..."
+                    class="w-full md:w-64 p-2 border rounded-lg text-sm bg-gray-50 outline-none"
+                  />
+                  <select
+                    id="grafikOrangSelector"
+                    onchange="muatGrafikPerorangan()"
+                    class="w-full md:flex-1 p-2 border rounded-lg text-sm bg-gray-50 outline-none"
+                  ></select>
+                </div>
+                <div id="grafikOrangInfo" class="text-xs text-gray-500 font-semibold mb-3"></div>
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <div class="border rounded-lg p-3">
+                    <div class="text-xs font-bold text-gray-600 uppercase mb-2">Tren Nilai Akhir &amp; Grade</div>
+                    <canvas id="chartOrangAkhir" height="220"></canvas>
+                  </div>
+                  <div class="border rounded-lg p-3">
+                    <div class="text-xs font-bold text-gray-600 uppercase mb-2">Rincian Hard Skill vs Soft Skill</div>
+                    <canvas id="chartOrangRincian" height="220"></canvas>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Sub-tab: Perbandingan Tim (Manager/SPV/Admin) -->
+              <div id="grafikTimPanel" class="hidden">
+                <div class="flex flex-col md:flex-row gap-3 mb-4">
+                  <select id="grafikTimTahun" class="p-2 border rounded-lg text-sm bg-gray-50 outline-none"></select>
+                  <select id="grafikTimSemester" class="p-2 border rounded-lg text-sm bg-gray-50 outline-none">
+                    <option value="1">Semester I</option>
+                    <option value="2">Semester II</option>
+                  </select>
+                  <button
+                    onclick="muatGrafikTim()"
+                    class="bg-[#00A693] text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-teal-700 transition"
+                  >
+                    Tampilkan
+                  </button>
+                </div>
+                <div class="border rounded-lg p-3">
+                  <div class="text-xs font-bold text-gray-600 uppercase mb-2">Perbandingan Nilai Akhir Tim (periode terpilih)</div>
+                  <canvas id="chartTim" height="260"></canvas>
+                </div>
+              </div>
+            </div>
+
+            <!-- TAB PER DEPARTEMEN -->
+            <div id="grafikDeptPanel" class="hidden">
+              <div class="flex flex-col md:flex-row gap-3 mb-4">
+                <select
+                  id="grafikDeptSelector"
+                  onchange="muatGrafikDepartemen()"
+                  class="w-full md:w-72 p-2 border rounded-lg text-sm bg-gray-50 outline-none"
+                ></select>
+              </div>
+              <div class="border rounded-lg p-3">
+                <div class="text-xs font-bold text-gray-600 uppercase mb-2">Tren Rata-rata Nilai Akhir Departemen</div>
+                <canvas id="chartDept" height="260"></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SEKSI 3: ARSIP & UNDUH MASSAL (Full Admin & Archive Admin) -->
+        <div id="sec-arsip" class="hidden space-y-6 max-w-4xl mx-auto">
+          <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+            <h2 class="text-lg font-black text-gray-800 mb-1 uppercase">
+              Arsip &amp; Unduh Massal
+            </h2>
+            <p class="text-xs text-gray-500 mb-5">
+              Unduh seluruh dokumen KPI yang sudah <b>DISAHKAN</b> dalam satu periode
+              (Tahun dan Semester), dikelompokkan per departemen, dalam satu file ZIP
+              berisi PDF per staf.
+            </p>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5">
+              <div>
+                <label class="text-[10px] font-bold text-gray-500 uppercase mb-1 block">Tahun</label>
+                <select id="arsipTahun" class="w-full p-2 border rounded-lg text-sm bg-gray-50 outline-none"></select>
+              </div>
+              <div>
+                <label class="text-[10px] font-bold text-gray-500 uppercase mb-1 block">Semester</label>
+                <select id="arsipSemester" class="w-full p-2 border rounded-lg text-sm bg-gray-50 outline-none">
+                  <option value="1">Semester I</option>
+                  <option value="2">Semester II</option>
+                </select>
+              </div>
+              <div>
+                <label class="text-[10px] font-bold text-gray-500 uppercase mb-1 block">Departemen</label>
+                <select id="arsipDept" class="w-full p-2 border rounded-lg text-sm bg-gray-50 outline-none">
+                  <option value="">-- Semua Departemen --</option>
+                </select>
+              </div>
+            </div>
+            <button
+              id="btnUnduhMassal"
+              onclick="unduhMassal()"
+              class="bg-[#00A693] text-white px-5 py-2.5 rounded-lg text-sm font-bold hover:bg-teal-700 transition shadow-sm"
+            >
+              ⬇️ Unduh ZIP (PDF per Staf)
+            </button>
+            <div id="massalProgress" class="text-xs text-gray-500 font-semibold mt-3"></div>
+          </div>
+        </div>
       </main>
+    </div>
+
+    <!-- Area render offscreen untuk konversi PDF massal (jangan dihapus, dipakai script) -->
+    <div id="massalRenderArea" style="position:fixed; left:-10000px; top:0; width:1050px; background:#fff;"></div>
+
+    <!-- POP-UP SAPAAN + MOTIVASI (muncul singkat setelah login, hilang otomatis) -->
+    <div
+      id="sapaanOverlay"
+      class="hidden fixed inset-0 z-50 flex items-center justify-center pointer-events-none"
+    >
+      <div
+        id="sapaanCard"
+        class="opacity-0 scale-95 transition-all duration-700 ease-out bg-white/95 backdrop-blur-sm border border-teal-100 shadow-2xl rounded-2xl px-8 py-7 max-w-md mx-4 text-center"
+      >
+        <div id="sapaanTeks" class="text-2xl font-black text-[#00A693] mb-2"></div>
+        <div id="motivasiTeks" class="text-sm text-slate-600 leading-relaxed"></div>
+      </div>
     </div>
 
     <!-- MODAL GANTI PASSWORD -->
@@ -895,7 +1174,141 @@
 
       window.onload = function () {
         document.getElementById("btnLogin").innerText = "Masuk Sistem";
+        initLoginCarousel();
       };
+
+      /* ==================== PANEL VISI-MISI & SLIDE LOGIN ====================
+         Slide berganti otomatis tiap 8 detik (fade in/out). Berisi: 1 kartu
+         Visi, beberapa kartu Misi (1 poin per kartu), dan -- HANYA kalau
+         tanggal hari ini jatuh di 21-30 Juni atau 21-31 Desember -- 1 kartu
+         tambahan "Pengingat Musiman" yang tahun & nama semesternya dihitung
+         otomatis dari tanggal perangkat (bukan ditulis manual), jadi berlaku
+         abadi setiap tahun tanpa perlu update kode. */
+
+      const VISI_GRANOSTIC =
+        "Menjadi nilai tambah dan pembeda dalam pelayanan laboratorium terbaik di Indonesia";
+
+      const MISI_GRANOSTIC = [
+        "Memberikan pelayanan yang profesional, hasil pemeriksaan yang akurat dan terpercaya, dan didukung oleh perkembangan kemajuan ilmu pengetahuan dan teknologi.",
+        "Digitalisasi layanan dengan menggunakan digital platform.",
+        "Mengembangkan jaringan kerjasama dan produk-produk terbaru.",
+        "Menjadi pusat pelayanan dan diagnosa nyeri yang modern dan terkini.",
+      ];
+
+      // Variasi kalimat pembuka pengingat musiman -- dipilih acak tiap halaman
+      // dimuat, supaya tidak itu-itu saja tiap tahun. Tambahkan kalimat baru
+      // di sini kapan saja kalau ingin variasinya lebih banyak.
+      const PEMBUKA_PENGINGAT_MUSIMAN = [
+        "Jangan terlewat ya!",
+        "Bagi pimpinan PT. PMU!",
+        "Hai, leaders!",
+        "Hai, leaders Granostic Center!",
+      ];
+
+      // Mengembalikan { semester: 'I'|'II', bulanNama, tglAwal, tglAkhir, tahun }
+      // kalau HARI INI jatuh di jendela pengingat, atau null kalau tidak.
+      // Dihitung murni dari tanggal perangkat -- tidak ada tahun yang di-hardcode,
+      // jadi otomatis berlaku setiap tahun selamanya.
+      function _cekJendelaPengingatMusiman_() {
+        const now = new Date();
+        const tgl = now.getDate();
+        const bulan = now.getMonth(); // 0 = Januari ... 5 = Juni, 11 = Desember
+        const tahun = now.getFullYear();
+
+        if (bulan === 5 && tgl >= 21 && tgl <= 30) {
+          return { semester: "I", bulanNama: "Juni", tglAwal: 21, tglAkhir: 30, tahun };
+        }
+        if (bulan === 11 && tgl >= 21 && tgl <= 31) {
+          return { semester: "II", bulanNama: "Desember", tglAwal: 21, tglAkhir: 31, tahun };
+        }
+        return null;
+      }
+
+      function _susunSlideLoginPage_() {
+        const slides = [
+          { label: "VISI KAMI", body: VISI_GRANOSTIC },
+          ...MISI_GRANOSTIC.map((m, i) => ({
+            label: `MISI ${i + 1}/${MISI_GRANOSTIC.length}`,
+            body: m,
+          })),
+        ];
+
+        const jendela = _cekJendelaPengingatMusiman_();
+        if (jendela) {
+          const pembuka =
+            PEMBUKA_PENGINGAT_MUSIMAN[
+              Math.floor(Math.random() * PEMBUKA_PENGINGAT_MUSIMAN.length)
+            ];
+          slides.push({
+            label: "📅 PENGINGAT",
+            body: `${pembuka} Segera lengkapi KPI Semester ${jendela.semester} tim Anda pada tanggal ${jendela.tglAwal}-${jendela.tglAkhir} ${jendela.bulanNama} ${jendela.tahun}!`,
+          });
+        }
+        return slides;
+      }
+
+      let _loginSlideList = [];
+      let _loginSlideIdx = 0;
+      let _loginSlideTimer = null;
+
+      function initLoginCarousel() {
+        _loginSlideList = _susunSlideLoginPage_();
+        _loginSlideIdx = 0;
+
+        const track = document.getElementById("loginCarouselTrack");
+        const dotsWrap = document.getElementById("loginCarouselDots");
+        if (!track || !dotsWrap) return;
+
+        track.innerHTML = _loginSlideList
+          .map(
+            (s, i) => `
+          <div
+            class="login-slide absolute inset-0 flex flex-col justify-center transition-opacity duration-700 ease-in-out ${
+              i === 0 ? "opacity-100" : "opacity-0 pointer-events-none"
+            }"
+          >
+            <div class="text-xs font-black tracking-widest text-white/70 mb-2 uppercase">${s.label}</div>
+            <div class="text-base md:text-lg font-bold leading-relaxed">${s.body}</div>
+          </div>`
+          )
+          .join("");
+
+        dotsWrap.innerHTML = _loginSlideList
+          .map(
+            (_, i) =>
+              `<span class="w-2 h-2 rounded-full transition ${
+                i === 0 ? "bg-white" : "bg-white/40"
+              }" data-dot="${i}"></span>`
+          )
+          .join("");
+
+        if (_loginSlideTimer) clearInterval(_loginSlideTimer);
+        if (_loginSlideList.length > 1) {
+          _loginSlideTimer = setInterval(_gotoSlideLoginBerikutnya_, 8000);
+        }
+      }
+
+      function _gotoSlideLoginBerikutnya_() {
+        if (!_loginSlideList.length) return;
+        const track = document.getElementById("loginCarouselTrack");
+        const dotsWrap = document.getElementById("loginCarouselDots");
+        if (!track || !dotsWrap) return;
+
+        const slideEls = track.querySelectorAll(".login-slide");
+        const dotEls = dotsWrap.querySelectorAll("[data-dot]");
+
+        slideEls[_loginSlideIdx].classList.remove("opacity-100");
+        slideEls[_loginSlideIdx].classList.add("opacity-0", "pointer-events-none");
+        dotEls[_loginSlideIdx].classList.remove("bg-white");
+        dotEls[_loginSlideIdx].classList.add("bg-white/40");
+
+        _loginSlideIdx = (_loginSlideIdx + 1) % _loginSlideList.length;
+
+        slideEls[_loginSlideIdx].classList.remove("opacity-0", "pointer-events-none");
+        slideEls[_loginSlideIdx].classList.add("opacity-100");
+        dotEls[_loginSlideIdx].classList.remove("bg-white/40");
+        dotEls[_loginSlideIdx].classList.add("bg-white");
+      }
 
       function getTimestamp() {
         const now = new Date();
@@ -908,27 +1321,139 @@
       }
 
       function switchMenu(menu) {
-        document.getElementById("sec-penilaian").classList.add("hidden");
-        document.getElementById("sec-rekap").classList.add("hidden");
-        document.getElementById("btn-penilaian").classList.remove("active");
-        document.getElementById("btn-rekap").classList.remove("active");
+        ["penilaian", "rekap", "grafik", "arsip"].forEach((m) => {
+          document.getElementById("sec-" + m).classList.add("hidden");
+          document.getElementById("btn-" + m).classList.remove("active");
+        });
         document.getElementById("sec-" + menu).classList.remove("hidden");
         document.getElementById("btn-" + menu).classList.add("active");
         if (menu === "rekap") renderRekap();
+        if (menu === "arsip") siapkanArsip();
+        if (menu === "grafik") siapkanGrafik();
       }
 
+      // FULL_ADMIN   : kolom "Role Sistem" = SuperAdmin, ATAU (cara lama) Direksi/flag SuperAdmin=YES.
+      //                Lihat semua, unduh massal, buka kunci dokumen manapun, reset password siapa pun.
+      // ARCHIVE_ADMIN: kolom "Role Sistem" = AdminArsip, ATAU (cara lama) Role = "AdminArsip".
       function getAccessLevel(user) {
         if (!user) return "STAFF";
+        const roleSistem = String(user.roleSistem || "").toLowerCase().trim();
         const sa =
+          roleSistem === "superadmin" ||
           user.superAdmin === true ||
           ["yes", "true", "1", "ya"].includes(
             String(user.superAdmin || "").toLowerCase().trim()
           );
         const role = String(user.role || "").toLowerCase().trim();
         if (sa || role === "direksi") return "SUPER_ADMIN";
+        if (roleSistem === "adminarsip" || role === "adminarsip") return "ARCHIVE_ADMIN";
         if (role === "manager" || role === "mgr") return "MANAGER";
         if (role === "supervisor" || role === "spv") return "SPV";
         return "STAFF";
+      }
+
+      // Telusuri seluruh bawahan (langsung & berjenjang) dari sebuah email,
+      // berdasarkan MOCK_STRUKTUR. Dipakai supaya manager lintas-departemen
+      // (mis. "Lab & Cln Manager") tetap otomatis bisa melihat/verifikasi
+      // seluruh jenjang di bawahnya, bukan cuma yang tercatat sebagai
+      // bawahan langsung.
+      function getAllDescendantsClient(email) {
+        const childrenMap = {};
+        MOCK_STRUKTUR.forEach((s) => {
+          const p = (s.email_penilai || "").trim().toLowerCase();
+          const c = (s.email_staf_dinilai || "").trim().toLowerCase();
+          if (!p || !c) return;
+          if (!childrenMap[p]) childrenMap[p] = [];
+          childrenMap[p].push(c);
+        });
+        const seen = {};
+        const result = [];
+        const stack = (childrenMap[email] || []).slice();
+        while (stack.length) {
+          const cur = stack.pop();
+          if (seen[cur]) continue;
+          seen[cur] = true;
+          result.push(cur);
+          (childrenMap[cur] || []).forEach((c) => stack.push(c));
+        }
+        return result;
+      }
+
+      // Menyusun rantai persetujuan (atasan/verif1/verif2/sahkan) untuk satu staf.
+      // HARUS identik dengan resolveChain_ di Code.gs supaya tombol yang tampil
+      // di layar selalu konsisten dengan apa yang diizinkan server.
+      function resolveChainClient(stafEmail) {
+        const emailLower = String(stafEmail || "").trim().toLowerCase();
+        const staf = MOCK_KARYAWAN.find(
+          (k) => (k.email || "").trim().toLowerCase() === emailLower
+        );
+        if (!staf) return null;
+
+        const link = MOCK_STRUKTUR.find(
+          (s) => (s.email_staf_dinilai || "").trim().toLowerCase() === emailLower
+        );
+        const atasanEmail = link ? (link.email_penilai || "").trim().toLowerCase() : "";
+        let atasan = atasanEmail
+          ? MOCK_KARYAWAN.find((k) => (k.email || "").trim().toLowerCase() === atasanEmail)
+          : null;
+        if (!atasan) atasan = { nama: "-", jabatan: "-", email: "" };
+
+        const dirUtama = MOCK_KARYAWAN.find(
+          (k) => (k.jabatan || "").toLowerCase().trim() === "direktur utama"
+        ) || { nama: "-", jabatan: "Direktur Utama", email: "" };
+        const direktur = MOCK_KARYAWAN.find(
+          (k) => (k.jabatan || "").toLowerCase().trim() === "direktur"
+        ) || { nama: "-", jabatan: "Direktur", email: "" };
+        const hr = MOCK_KARYAWAN.find(
+          (k) => (k.jabatan || "").toLowerCase().trim() === "hrga & it manager"
+        ) || { nama: "-", jabatan: "HRGA & IT Manager", email: "" };
+
+        const role = (staf.role || "").toLowerCase().trim();
+        let verif1 = { nama: "-", jabatan: "-", email: "" };
+        let verif2 = hr;
+        let sahkan = dirUtama;
+
+        if (role === "manager") {
+          verif1 = direktur;
+          sahkan = dirUtama;
+          if (hr.email && staf.email && hr.email.toLowerCase() === staf.email.toLowerCase()) {
+            verif2 = direktur; // HR Manager tidak verifikasi dirinya sendiri
+          }
+        } else if (role === "supervisor") {
+          verif1 = atasan;
+        } else if (role === "staff") {
+          const atasanRole = (atasan.role || "").toLowerCase().trim();
+          if (atasanRole === "manager" || atasanRole === "direksi") {
+            verif1 = atasan;
+          } else {
+            const spvLink = MOCK_STRUKTUR.find(
+              (s) => (s.email_staf_dinilai || "").trim().toLowerCase() === atasanEmail
+            );
+            if (spvLink) {
+              verif1 =
+                MOCK_KARYAWAN.find(
+                  (k) =>
+                    (k.email || "").trim().toLowerCase() ===
+                    (spvLink.email_penilai || "").trim().toLowerCase()
+                ) || verif1;
+            }
+          }
+        } else {
+          verif1 = { nama: "-", jabatan: "-", email: "" };
+          verif2 = { nama: "-", jabatan: "-", email: "" };
+          sahkan = dirUtama;
+        }
+
+        // ATURAN: Verif1 tidak boleh sama dengan Verif2 -> lempar ke Direktur
+        if (
+          verif1.email &&
+          verif2.email &&
+          verif1.email.toLowerCase() === verif2.email.toLowerCase()
+        ) {
+          verif2 = direktur;
+        }
+
+        return { staf: staf, atasan: atasan, verif1: verif1, verif2: verif2, sahkan: sahkan };
       }
 
       document
@@ -954,14 +1479,21 @@
               currentUser = j.user;
               btn.innerText = "Memuat data...";
               await loadMasterData();
+              if (_loginSlideTimer) clearInterval(_loginSlideTimer);
               document.getElementById("loginView").classList.add("hidden");
               document.getElementById("mainView").classList.remove("hidden");
               document.getElementById("loggedUserName").innerText =
                 currentUser.nama;
               document.getElementById("userRoleBadge").innerText =
                 currentUser.jabatan;
+              populateTahunSemester();
               populateStafDropdown();
-              if (currentUser.mustChange) openGantiPassword(true);
+              applyNavVisibility();
+              if (currentUser.mustChange) {
+                openGantiPassword(true);
+              } else {
+                tampilkanSapaanLogin();
+              }
             } else {
               alert(j.error || "Email atau Password salah!");
             }
@@ -973,15 +1505,140 @@
           }
         });
 
+      // Menu Arsip & Unduh Massal cuma untuk FULL_ADMIN & ARCHIVE_ADMIN.
+      function applyNavVisibility() {
+        const accLevel = getAccessLevel(currentUser);
+        const boleh = accLevel === "SUPER_ADMIN" || accLevel === "ARCHIVE_ADMIN";
+        document.getElementById("btn-arsip").classList.toggle("hidden", !boleh);
+      }
+
+      /* ==================== POP-UP SAPAAN + MOTIVASI SAAT LOGIN ====================
+         Tampil singkat (fade in -> tahan ~5 detik -> fade out -> hilang) setiap
+         kali login berhasil. Sapaan & motivasi dipilih ACAK & independen satu
+         sama lain setiap login (bisa saja kombinasi sama berulang, itu wajar). */
+      const DAFTAR_SAPAAN = [
+        "Hai, {nama}!",
+        "Halo, {nama}!",
+        "Senang melihatmu, {nama}!",
+        "Bertemu kembali, {nama}!",
+        "Semangat, {nama}!",
+        "Selamat datang, {nama}!",
+        "Berjumpa kembali, {nama}!",
+      ];
+      const DAFTAR_MOTIVASI = [
+        "Setiap kontribusi yang Anda berikan hari ini menjadi bagian dari keberhasilan organisasi di masa depan. Selamat bekerja.",
+        "Kinerja yang konsisten dimulai dari komitmen terhadap setiap tanggung jawab yang dijalankan dengan baik.",
+        "Mari jadikan setiap target sebagai kesempatan untuk terus bertumbuh dan memberikan nilai terbaik.",
+        "Pencapaian terbaik lahir dari disiplin, kolaborasi, dan semangat untuk terus berkembang.",
+        "Terima kasih atas dedikasi dan profesionalisme yang Anda berikan bagi kemajuan perusahaan.",
+        "KPI bukan sekadar angka, tetapi cerminan kontribusi nyata dalam mencapai tujuan bersama.",
+        "Keberhasilan organisasi dibangun dari pencapaian setiap individu yang bekerja dengan integritas dan tanggung jawab.",
+        "Teruslah menjaga kualitas kerja, karena setiap langkah kecil membawa dampak yang berarti.",
+        "Semoga hari ini menjadi kesempatan untuk memberikan hasil kerja terbaik dan menciptakan nilai positif bagi tim.",
+        "Mari bekerja dengan fokus, semangat, dan komitmen untuk mencapai kinerja yang semakin baik setiap harinya.",
+        "Semoga hari ini jadi langkah kecil menuju pencapaian yang lebih besar.",
+        "Target boleh tinggi, tapi semangat juga harus tetap tinggi. Semangat bekerja!",
+        "Lakukan yang terbaik hari ini. Progres kecil tetap berarti.",
+        "Terima kasih sudah menjadi bagian dari perjalanan dan pertumbuhan perusahaan.",
+        "Setiap pekerjaan yang diselesaikan dengan baik selalu membawa dampak positif.",
+        "Fokus pada prosesnya, nikmati setiap perkembangan yang berhasil dicapai.",
+        "Tidak harus sempurna setiap hari, yang penting terus berkembang dan memberikan yang terbaik.",
+        "Semoga hari ini penuh semangat, kolaborasi yang baik, dan hasil kerja yang membanggakan.",
+        "Yuk mulai hari ini dengan energi positif dan semangat untuk mencapai target bersama.",
+        "Terus melangkah, terus bertumbuh, dan terus memberi arti melalui setiap pekerjaan yang dilakukan.",
+        "Kerja yang bermakna dimulai dari langkah yang konsisten.",
+        "Hari ini adalah kesempatan baru untuk menciptakan dampak yang lebih baik.",
+        "Berkembang bukan tentang menjadi sempurna, tetapi menjadi lebih baik dari kemarin.",
+        "Kolaborasi yang baik selalu menghasilkan pencapaian yang lebih besar.",
+        "Terima kasih telah menjadi bagian dari budaya kerja yang saling mendukung dan bertumbuh.",
+        "Setiap kontribusi memiliki arti. Mari terus bergerak maju bersama.",
+        "Mulai hari dengan tujuan yang jelas, akhiri dengan pencapaian yang membanggakan.",
+        "Kinerja terbaik lahir dari komitmen yang dijaga setiap hari.",
+        "Seimbangkan doa dan usaha untuk meraih tujuan bersama.",
+        "Granostic, Yes!.",
+        "Bekerjalah dengan hati dan hati-hati.",
+        "Mari membangun budaya kerja yang benar, baik, suportif, dan objektif.",
+        "Bersama kita membangun hasil, bersama kita menciptakan perubahan.",
+        "Semoga hari ini menjadi hari yang produktif, positif, dan penuh pencapaian.",
+      ];
+
+      function tampilkanSapaanLogin() {
+        const nama = (currentUser && currentUser.nama) || "";
+        const sapaan =
+          DAFTAR_SAPAAN[Math.floor(Math.random() * DAFTAR_SAPAAN.length)].replace(
+            "{nama}",
+            nama
+          );
+        const motivasi =
+          DAFTAR_MOTIVASI[Math.floor(Math.random() * DAFTAR_MOTIVASI.length)];
+
+        document.getElementById("sapaanTeks").innerText = sapaan;
+        document.getElementById("motivasiTeks").innerText = motivasi;
+
+        const overlay = document.getElementById("sapaanOverlay");
+        const card = document.getElementById("sapaanCard");
+
+        overlay.classList.remove("hidden");
+        // Beri browser 1 frame supaya transition CSS "opacity/scale" benar-benar
+        // ter-animasi (bukan langsung loncat ke kondisi akhir).
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            card.classList.remove("opacity-0", "scale-95");
+            card.classList.add("opacity-100", "scale-100");
+          });
+        });
+
+        setTimeout(() => {
+          card.classList.remove("opacity-100", "scale-100");
+          card.classList.add("opacity-0", "scale-95");
+          setTimeout(() => overlay.classList.add("hidden"), 700); // tunggu transisi fade-out selesai
+        }, 5000);
+      }
+
+      // Dropdown Tahun (sampai 2100) + Semester I/II, menggantikan dropdown
+      // Periode lama yang cuma berisi 2 opsi tetap (Semester 1/2 2026).
+      function populateTahunSemester() {
+        const tahunSekarang = new Date().getFullYear();
+        [
+          document.getElementById("tahunFilter"),
+          document.getElementById("arsipTahun"),
+          document.getElementById("grafikTimTahun"),
+          document.getElementById("rekapTahun"),
+        ].forEach((sel) => {
+          if (!sel) return;
+          sel.innerHTML = "";
+          for (let y = tahunSekarang - 2; y <= 2100; y++) {
+            const opt = document.createElement("option");
+            opt.value = String(y);
+            opt.innerText = String(y);
+            if (y === tahunSekarang) opt.selected = true;
+            sel.appendChild(opt);
+          }
+        });
+      }
+
+      // Format periode TETAP "Semester X YYYY" (kompatibel dengan data lama).
+      function currentPeriode() {
+        const th = document.getElementById("tahunFilter").value;
+        const sm = document.getElementById("semesterFilter").value;
+        return `Semester ${sm} ${th}`;
+      }
+
+      // Filter periode KHUSUS Dashboard Global -- independen dari filter di
+      // halaman Lembar Penilaian, supaya bisa lihat rekap periode lain tanpa
+      // perlu bolak-balik ganti staf yang sedang dinilai.
+      function currentPeriodeRekap() {
+        const th = document.getElementById("rekapTahun").value;
+        const sm = document.getElementById("rekapSemester").value;
+        return `Semester ${sm} ${th}`;
+      }
+
       function populateStafDropdown() {
         const dropdown = document.getElementById("stafSelector");
         const myEmail = (currentUser.email || "").trim().toLowerCase();
         const myDept = (currentUser.departemen || "").trim().toLowerCase();
         const accLevel = getAccessLevel(currentUser);
-
-        const directSubordinates = MOCK_STRUKTUR.filter(
-          (s) => (s.email_penilai || "").trim().toLowerCase() === myEmail
-        ).map((s) => (s.email_staf_dinilai || "").trim().toLowerCase());
+        const descendants = getAllDescendantsClient(myEmail);
 
         dropdown.innerHTML =
           '<option value="">-- Pilih Staf Untuk Dinilai --</option>';
@@ -990,19 +1647,18 @@
           const kEmail = (k.email || "").trim().toLowerCase();
           const kDept = (k.departemen || "").trim().toLowerCase();
           let canView = false;
-          if (accLevel === "SUPER_ADMIN") canView = true;
+          if (accLevel === "SUPER_ADMIN" || accLevel === "ARCHIVE_ADMIN") canView = true;
           else if (kEmail === myEmail) canView = true;
-          else if (directSubordinates.includes(kEmail)) canView = true;
+          else if (descendants.includes(kEmail)) canView = true;
           else if (accLevel === "MANAGER" && kDept === myDept) canView = true;
-          
+
           if (canView)
             dropdown.innerHTML += `<option value="${k.nik}">${k.nama} (${k.jabatan})</option>`;
         });
       }
 
       function loadData() {
-        document.getElementById("lblPeriode").innerText =
-          document.getElementById("periodeFilter").value;
+        document.getElementById("lblPeriode").innerText = currentPeriode();
         if (document.getElementById("stafSelector").value) renderKPI();
       }
 
@@ -1018,143 +1674,43 @@
         );
         currentStaf = staf;
         const stafEmail = (staf.email || "").trim().toLowerCase();
-        const stafRole = (staf.jabatan || "").trim().toLowerCase();
+        // stafJabatan dipakai untuk mencocokkan Master_Indikator (nama jabatan spesifik),
+        // BEDA dengan Role (Manager/Supervisor/Staff/Direksi) yang dipakai resolveChainClient.
+        const stafJabatan = (staf.jabatan || "").trim().toLowerCase();
 
         document.getElementById("namaDinilai").innerText = staf.nama;
         document.getElementById("jabatanDinilai").innerText = staf.jabatan;
         document.getElementById("nikDinilai").innerText = staf.nik;
         document.getElementById("ttdStaff").innerText = staf.nama;
 
-        // Fiksasi Penilai: Hanya mengambil penilai berdasarkan Struktur GSheet
-        const strukturLink = MOCK_STRUKTUR.find(
-          (s) => (s.email_staf_dinilai || "").trim().toLowerCase() === stafEmail
-        );
-        
-        let atasanEmail = strukturLink
-          ? (strukturLink.email_penilai || "").trim().toLowerCase()
-          : "";
-          
-        let atasanObj = null;
-        if (atasanEmail) {
-            atasanObj = MOCK_KARYAWAN.find(
-              (k) => (k.email || "").trim().toLowerCase() === atasanEmail
-            );
-        }
-        if (!atasanObj) atasanObj = { nama: "-", jabatan: "-", email: "-" };
-
-        document.getElementById("ttdAtasan").innerText = atasanObj.nama;
-        document.getElementById("ttdAtasanJabatan").innerText =
-          atasanObj.jabatan;
-
-        const dirUtamaObj = MOCK_KARYAWAN.find(
-          (k) => (k.jabatan || "").toLowerCase() === "direktur utama"
-        ) || {
-          nama: "Dwi Poetra Sedjat, Ir.",
-          jabatan: "Direktur Utama",
-          email: "",
-        };
-        const direkturObj = MOCK_KARYAWAN.find(
-          (k) =>
-            (k.jabatan || "").toLowerCase() === "direktur" ||
-            (k.jabatan || "").toLowerCase().includes("bod")
-        ) || {
-          nama: "dr. May Fanny Tanzilia, Sp.PK",
-          jabatan: "Direktur",
-          email: "",
-        };
-        
-        const hrObj = MOCK_KARYAWAN.find(
-          (k) =>
-            (k.departemen || "").toLowerCase().includes("hr") &&
-            (k.jabatan || "").toLowerCase().includes("manager")
-        ) || {
-          nama: "Deiky Catur Hadi, S.Pd",
-          jabatan: "HRGA & IT Manager",
-          email: "",
-        };
-
-        const atasanRole = (atasanObj.jabatan || "").trim().toLowerCase();
-        let verif1Obj = { nama: "-", jabatan: "-", email: "-" };
-        let verif2Obj = hrObj;
-        let sahkanObj = direkturObj;
-
-        if (stafRole.includes("manager") || stafRole.includes("mgr")) {
-          verif1Obj = direkturObj;
-          sahkanObj = dirUtamaObj;
-          if (stafRole.includes("hr")) {
-            verif2Obj = direkturObj;
-          }
-        } else if (
-          stafRole.includes("spv") ||
-          stafRole.includes("supervisor")
-        ) {
-          verif1Obj = atasanObj;
-        } else {
-          if (
-            atasanRole.includes("manager") ||
-            atasanRole.includes("mgr") ||
-            atasanRole.includes("direktur")
-          ) {
-            verif1Obj = atasanObj;
-          } else {
-            const spvLink = MOCK_STRUKTUR.find(
-              (s) =>
-                (s.email_staf_dinilai || "").trim().toLowerCase() ===
-                atasanEmail
-            );
-            if (spvLink && spvLink.email_penilai) {
-              verif1Obj = MOCK_KARYAWAN.find(
-                (k) =>
-                  (k.email || "").trim().toLowerCase() ===
-                  spvLink.email_penilai.trim().toLowerCase()
-              ) || { nama: "-", jabatan: "-", email: "-" };
-            }
-          }
-        }
+        const chain = resolveChainClient(stafEmail);
+        const atasanObj = chain.atasan,
+          verif1Obj = chain.verif1,
+          verif2Obj = chain.verif2,
+          sahkanObj = chain.sahkan;
+        const atasanEmail = (atasanObj.email || "").trim().toLowerCase();
 
         chainAtasan = atasanObj;
         chainVerif1 = verif1Obj;
         chainVerif2 = verif2Obj;
         chainSahkan = sahkanObj;
 
+        document.getElementById("ttdAtasan").innerText = atasanObj.nama;
+        document.getElementById("ttdAtasanJabatan").innerText = atasanObj.jabatan;
         document.getElementById("ttdVerif1Nama").innerText = verif1Obj.nama;
-        document.getElementById("ttdVerif1Jabatan").innerText =
-          verif1Obj.jabatan;
+        document.getElementById("ttdVerif1Jabatan").innerText = verif1Obj.jabatan;
         document.getElementById("ttdVerif2Nama").innerText = verif2Obj.nama;
-        document.getElementById("ttdVerif2Jabatan").innerText =
-          verif2Obj.jabatan;
+        document.getElementById("ttdVerif2Jabatan").innerText = verif2Obj.jabatan;
         document.getElementById("ttdDisahkanNama").innerText = sahkanObj.nama;
-        document.getElementById("ttdDisahkanJabatan").innerText =
-          sahkanObj.jabatan;
+        document.getElementById("ttdDisahkanJabatan").innerText = sahkanObj.jabatan;
 
-        const myEmail = (currentUser.email || "").trim().toLowerCase();
-        const accLevel = getAccessLevel(currentUser);
-        const isSelf = stafEmail === myEmail;
-        
-        // Memastikan hak edit hanya untuk atasan sesuai Struktur
-        const canEdit = !isSelf && myEmail === atasanEmail;
+        const myNik = String(currentUser.nik || "").trim();
+        const isSelf = String(staf.nik || "").trim() === myNik;
 
-        if (!canEdit) {
-          document.getElementById("viewOnlyAlert").classList.remove("hidden");
-          document.getElementById("btnSimpan").classList.add("hidden");
-        } else {
-          document.getElementById("viewOnlyAlert").classList.add("hidden");
-          document.getElementById("btnSimpan").classList.remove("hidden");
-        }
+        // Memastikan hak edit hanya untuk atasan sesuai Struktur (dibandingkan via NIK)
+        const canEdit = !isSelf && myNik === String(atasanObj.nik || "").trim();
 
-        document.getElementById("btnAjukan").classList.add("hidden");
-        document.getElementById("btnVerifikasi1").classList.add("hidden");
-        document.getElementById("btnVerifikasi2").classList.add("hidden");
-        document.getElementById("btnSahkan").classList.add("hidden");
-
-        if (myEmail === atasanEmail && !isSelf)
-          document.getElementById("btnAjukan").classList.remove("hidden");
-        if (myEmail === (verif1Obj.email || "").trim().toLowerCase())
-          document.getElementById("btnVerifikasi1").classList.remove("hidden");
-        if (myEmail === (verif2Obj.email || "").trim().toLowerCase())
-          document.getElementById("btnVerifikasi2").classList.remove("hidden");
-        if (myEmail === (sahkanObj.email || "").trim().toLowerCase())
-          document.getElementById("btnSahkan").classList.remove("hidden");
+        document.getElementById("viewOnlyAlert").classList.toggle("hidden", canEdit);
 
         let htmlHard = "";
         let htmlSoft = "";
@@ -1192,7 +1748,7 @@
 
           if (
             kat === "hard skill" &&
-            (itemJabatan === stafRole ||
+            (itemJabatan === stafJabatan ||
               itemJabatan === "semua jabatan" ||
               itemJabatan === "semua departemen")
           ) {
@@ -1251,8 +1807,7 @@
 
         currentDocumentStatus = "DRAFT";
         document.getElementById("statusDokumen").innerText = `STATUS: DRAFT`;
-        auditTrails = [];
-        document.getElementById("auditLog").innerHTML = "";
+        renderAuditLog([]); // dikosongkan dulu, akan diisi ulang dari server oleh muatHasilTersimpan()
 
         const qrUrl =
           "https://api.qrserver.com/v1/create-qr-code/?size=75x75&data=";
@@ -1268,20 +1823,73 @@
           qrUrl + encodeURIComponent(sahkanObj.nama);
 
         refreshQRCodes();
-        simpanLog(`Dokumen dibuka / dimuat.`);
         kalkulasi();
         applyLockState();
-        muatHasilTersimpan(stafEmail);
+        muatHasilTersimpan(String(staf.nik || "").trim());
       }
 
-      async function muatHasilTersimpan(stafEmail) {
+      // Menyusun ulang tampilan Audit Trail dari data RESMI milik server
+      // (bukan lagi catatan lokal browser yang hilang begitu halaman ditutup).
+      // Terlihat oleh SEMUA pihak yang berhak membuka dokumen ini (staf s.d
+      // direksi) dan ikut tercetak di PDF.
+      const AKSI_LABEL = {
+        simpan: "menyimpan draf nilai",
+        ajukan: "mengajukan penilaian",
+        verifikasi1: "memverifikasi (tahap 1)",
+        kembalikan1: "mengembalikan ke atasan penilai",
+        verifikasi2: "memverifikasi HR (tahap 2)",
+        kembalikan2: "mengembalikan ke Verifikator 1",
+        sahkan: "mengesahkan dokumen",
+        kembalikan3: "mengembalikan ke Verifikator HR",
+        bukaKunci: "membuka kunci dokumen untuk revisi",
+      };
+      function renderAuditLog(auditArr) {
+        auditTrails = auditArr || [];
+        const el = document.getElementById("auditLog");
+        if (!auditTrails.length) {
+          el.innerHTML =
+            '<div class="text-gray-400 italic">Belum ada riwayat untuk dokumen ini.</div>';
+          return;
+        }
+        el.innerHTML = auditTrails
+          .slice()
+          .reverse()
+          .map((a) => {
+            const waktu = a.ts
+              ? new Date(a.ts).toLocaleString("id-ID", { hour12: false })
+              : "-";
+            const label = AKSI_LABEL[a.aksi] || a.aksi || "-";
+            // Baris catatan/alasan SENGAJA dipisah ke <div> tersendiri di bawah
+            // baris identitas+status, supaya kalau teksnya panjang, wrapping-nya
+            // mengalir sendiri (tidak menyambung ke tengah baris timestamp/nama).
+            const alasanHtml = a.alasan
+              ? `<div class="pl-3 mt-0.5 border-l-2 border-teal-200 text-slate-500 italic break-words whitespace-normal">&ldquo;${a.alasan}&rdquo;</div>`
+              : "";
+            return (
+              `<div class="border-b border-gray-100 pb-1.5 mb-1.5">` +
+              `<div class="break-words whitespace-normal">` +
+              `<span class="text-gray-400">[${waktu}]</span> ` +
+              `<span class="font-bold text-teal-700">${a.oleh || "-"} (${a.jabatan || "-"}):</span> ` +
+              `${label} &rarr; status: <b>${a.statusBaru || "-"}</b>` +
+              `</div>` +
+              alasanHtml +
+              `</div>`
+            );
+          })
+          .join("");
+      }
+
+      async function muatHasilTersimpan(stafNik) {
         try {
-          const periode = document.getElementById("periodeFilter").value;
+          const periode = currentPeriode();
           const j = await apiCall("getHasil", { periode: periode });
           const rec = ((j && j.data) || []).find(
-            (r) => (r.emailStaf || "").toLowerCase() === stafEmail
+            (r) => (r.nikStaf || "") === stafNik
           );
-          if (!rec) return; 
+          if (!rec) {
+            applyLockState();
+            return;
+          }
 
           currentDocumentStatus = rec.status || "DRAFT";
           document.getElementById(
@@ -1305,9 +1913,7 @@
 
           refreshQRCodes();
           kalkulasi();
-          simpanLog(
-            `Memuat nilai tersimpan (status: ${currentDocumentStatus}).`
-          );
+          renderAuditLog(rec.audit || []);
           applyLockState();
         } catch (e) {}
       }
@@ -1367,27 +1973,18 @@
         return arr;
       }
 
-      function susunPayload(statusVal) {
-        return {
-          action: "simpanPenilaian",
-          periode: document.getElementById("periodeFilter").value,
-          emailStaf: currentStaf.email,
-          namaStaf: currentStaf.nama,
-          departemen: currentStaf.departemen,
-          jabatan: currentStaf.jabatan,
-          emailPenilai: currentUser.email,
-          namaPenilai: currentUser.nama,
-          status: statusVal,
-          nilaiHard: lastCalc.propHard,
-          nilaiSoft: lastCalc.propSoft,
-          nilaiAkhir: lastCalc.total,
-          grade: lastCalc.grade,
-          detail: {
-            hard: ambilSkorSection("hardSkillTable", "kpi-hard-bobot"),
-            soft: ambilSkorSection("softSkillTable", "kpi-soft-bobot"),
-          },
-          audit: auditTrails,
-        };
+      // Poin #1: cek semua skor Hard Skill & Soft Skill sudah diisi (>=1)
+      // sebelum boleh "Ajukan". Ini pengecekan sisi tampilan untuk UX cepat;
+      // validasi yang MENGIKAT tetap dilakukan ulang di server (Code.gs).
+      function semuaSkorTerisi() {
+        const inputs = document.querySelectorAll(
+          "#hardSkillTable .kpi-val-input, #softSkillTable .kpi-val-input"
+        );
+        if (inputs.length === 0) return false;
+        for (const inp of inputs) {
+          if ((Number(inp.value) || 0) < 1) return false;
+        }
+        return true;
       }
 
       function kalkulasi() {
@@ -1541,145 +2138,200 @@
           document.getElementById("qrDireksi").classList.remove("opacity-0");
       }
 
-      function simpanLog(pesan) {
-        auditTrails.unshift(
-          `<div class="border-b border-gray-100 pb-1.5"><span class="text-gray-400">${getTimestamp()}</span> <span class="font-bold text-teal-700">${
-            currentUser.nama
-          } (${currentUser.jabatan}):</span> ${pesan}</div>`
-        );
-        document.getElementById("auditLog").innerHTML = auditTrails.join("");
-      }
+      // Peta aksi -> status resmi & pesan. HARUS sinkron dengan ACTION_DEFS di Code.gs.
+      const ACTION_META = {
+        simpan:      { successMsg: "Nilai berhasil disimpan." },
+        ajukan:      { successMsg: "Penilaian berhasil diajukan.", wajibLengkap: true },
+        verifikasi1: { successMsg: "Verifikasi berhasil." },
+        kembalikan1: { successMsg: "Dikembalikan ke atasan penilai untuk direvisi.", wajibAlasan: true },
+        verifikasi2: { successMsg: "Verifikasi HR berhasil." },
+        kembalikan2: { successMsg: "Dikembalikan ke Verifikator 1.", wajibAlasan: true },
+        sahkan:      { successMsg: "Dokumen berhasil disahkan." },
+        kembalikan3: { successMsg: "Dikembalikan ke Verifikator HR.", wajibAlasan: true },
+        bukaKunci:   { successMsg: "Dokumen dibuka untuk revisi.", wajibAlasan: true, konfirmasiKhusus: true },
+      };
 
-      async function simpanData() {
+      // Satu fungsi terpadu untuk SEMUA aksi (simpan/ajukan/verifikasi/kembalikan/
+      // sahkan/bukaKunci). Server (Code.gs) yang menentukan sah-tidaknya aksi ini
+      // dilakukan oleh pengguna saat ini untuk staf terkait -- tombol di layar
+      // cuma kenyamanan tampilan, bukan satu-satunya pengaman.
+      async function kirimAksi(aksi) {
         if (!currentStaf) {
           alert("Pilih staf yang dinilai terlebih dahulu.");
           return;
         }
-        if (!bobotState.ok) {
+        const meta = ACTION_META[aksi];
+        if (!meta) return;
+
+        if (aksi === "simpan" && !bobotState.ok) {
           alert(bobotWarningMsg());
           return;
         }
-        const btn = document.getElementById("btnSimpan");
-        const note = document.getElementById("alasanLog").value.replace(/[<>]/g, "");
-        let msg = `Menyimpan skor/perubahan nilai KPI.`;
-        if (note) msg += ` Catatan: <em>"${note}"</em>`;
-        simpanLog(msg);
+        if (meta.wajibLengkap) {
+          if (!bobotState.ok) {
+            alert(bobotWarningMsg());
+            return;
+          }
+          if (!semuaSkorTerisi()) {
+            alert(
+              "Semua skor Hard Skill & Soft Skill wajib diisi (1-5) sebelum bisa diajukan."
+            );
+            return;
+          }
+        }
 
-        btn.disabled = true;
-        const prev = btn.innerText;
-        btn.innerText = "Menyimpan...";
+        const alasan = (document.getElementById("alasanLog").value || "")
+          .trim()
+          .replace(/[<>]/g, "");
+        if (meta.wajibAlasan && !alasan) {
+          alert("Wajib mengisi ALASAN di kolom catatan untuk aksi ini.");
+          return;
+        }
+        if (meta.konfirmasiKhusus) {
+          const konfirmasi = prompt(
+            "PERINGATAN: Membuka kunci dokumen yang sudah DISAHKAN akan MEMBATALKAN status pengesahan.\n\nKetik kata 'REVISI' untuk melanjutkan:"
+          );
+          if (konfirmasi !== "REVISI") {
+            alert("Pembukaan kunci dibatalkan.");
+            return;
+          }
+        }
+
+        const payload = {
+          action: "simpanPenilaian",
+          aksi: aksi,
+          periode: currentPeriode(),
+          nikStaf: currentStaf.nik,
+          alasanTindakan: alasan,
+        };
+        if (aksi === "simpan" || aksi === "ajukan") {
+          payload.detail = {
+            hard: ambilSkorSection("hardSkillTable", "kpi-hard-bobot"),
+            soft: ambilSkorSection("softSkillTable", "kpi-soft-bobot"),
+          };
+        }
+
+        const tombol = document.getElementById(
+          {
+            simpan: "btnSimpan",
+            ajukan: "btnAjukan",
+            verifikasi1: "btnVerifikasi1",
+            kembalikan1: "btnKembalikan1",
+            verifikasi2: "btnVerifikasi2",
+            kembalikan2: "btnKembalikan2",
+            sahkan: "btnSahkan",
+            kembalikan3: "btnKembalikan3",
+            bukaKunci: "btnBukaKunci",
+          }[aksi]
+        );
+        const prevText = tombol ? tombol.innerText : "";
+        if (tombol) {
+          tombol.disabled = true;
+          tombol.innerText = "Memproses...";
+        }
+
         try {
-          const payload = susunPayload(currentDocumentStatus || "DRAFT");
           const j = await apiPost(payload);
           if (j.ok) {
-            alert("Nilai berhasil disimpan ke database (Google Sheets)!");
+            alert(meta.successMsg);
+            document.getElementById("alasanLog").value = "";
+            // Muat ulang status/skor/audit trail dari server -- sumber
+            // kebenaran tunggal, bukan asumsi hasil di layar.
+            await muatHasilTersimpan(String(currentStaf.nik || "").trim());
           } else {
-            alert("Gagal menyimpan: " + (j.error || "tidak diketahui"));
+            alert("Gagal: " + (j.error || "tidak diketahui"));
           }
         } catch (err) {
           alert("Gagal menghubungi server: " + err.message);
         } finally {
-          btn.disabled = false;
-          btn.innerText = prev;
-          document.getElementById("alasanLog").value = "";
+          if (tombol) {
+            tombol.disabled = false;
+            tombol.innerText = prevText;
+          }
         }
       }
 
-      async function updateStatus(statusBaru) {
-        if (!currentStaf) {
-          alert("Pilih staf yang dinilai terlebih dahulu.");
-          return;
-        }
-        if (statusBaru === "PENILAIAN_SELESAI" && !bobotState.ok) {
-          alert(bobotWarningMsg());
-          return;
-        }
-        const note = document.getElementById("alasanLog").value.replace(/[<>]/g, "");
-        let msg = `Mengubah status dokumen menjadi: <strong>${statusBaru}</strong>.`;
-        if (note) msg += ` Catatan: <em>"${note}"</em>`;
+      // Menampilkan tombol Ajukan/Verifikasi/Kembalikan/Sahkan HANYA kalau
+      // (a) pengguna adalah pemegang peran yang tepat, DAN (b) dokumen sedang
+      // di tahap yang sesuai untuk peran itu. Selaras dengan ACTION_DEFS di
+      // server, supaya tombol yang tampil tidak pernah menyesatkan.
+      function refreshActionButtons() {
+        const myNik = String(currentUser.nik || "").trim();
+        const status = (currentDocumentStatus || "DRAFT").toUpperCase();
+        const atasanNik = String((chainAtasan && chainAtasan.nik) || "").trim();
+        const verif1Nik = String((chainVerif1 && chainVerif1.nik) || "").trim();
+        const verif2Nik = String((chainVerif2 && chainVerif2.nik) || "").trim();
+        const sahkanNik = String((chainSahkan && chainSahkan.nik) || "").trim();
+        const editableStage = status === "DRAFT" || status === "DIBUKA_REVISI";
 
-        currentDocumentStatus = statusBaru;
-        document.getElementById(
-          "statusDokumen"
-        ).innerText = `STATUS: ${statusBaru}`;
-        refreshQRCodes();
-        simpanLog(msg);
+        const visMap = {
+          btnAjukan: editableStage && myNik === atasanNik && myNik !== "",
+          btnVerifikasi1: status === "PENILAIAN_SELESAI" && myNik === verif1Nik,
+          btnKembalikan1: status === "PENILAIAN_SELESAI" && myNik === verif1Nik,
+          btnVerifikasi2: status === "TERVERIFIKASI_ATASAN" && myNik === verif2Nik,
+          btnKembalikan2: status === "TERVERIFIKASI_ATASAN" && myNik === verif2Nik,
+          btnSahkan: status === "TERVERIFIKASI_HR" && myNik === sahkanNik,
+          btnKembalikan3: status === "TERVERIFIKASI_HR" && myNik === sahkanNik,
+        };
+        Object.keys(visMap).forEach((id) => {
+          const el = document.getElementById(id);
+          if (el) el.classList.toggle("hidden", !visMap[id]);
+        });
 
-        try {
-          const payload = susunPayload(statusBaru);
-          const j = await apiPost(payload);
-          if (j.ok) {
-            alert(`Berhasil! Dokumen kini: ${statusBaru}`);
-          } else {
-            alert("Status diubah di layar, tapi GAGAL disimpan: " + (j.error || ""));
-          }
-        } catch (err) {
-          alert("Status diubah di layar, tapi gagal disimpan: " + err.message);
-        } finally {
-          document.getElementById("alasanLog").value = "";
-        }
+        const canEditNow = editableStage && myNik === atasanNik;
+        const btnSimpanEl = document.getElementById("btnSimpan");
+        if (btnSimpanEl) btnSimpanEl.classList.toggle("hidden", !canEditNow);
+        document.getElementById("viewOnlyAlert").classList.toggle("hidden", canEditNow);
       }
 
       function applyLockState() {
         const status = (currentDocumentStatus || "").toUpperCase();
-        const locked = status.indexOf("DISAHKAN") > -1;
-        const myEmail = (currentUser.email || "").trim().toLowerCase();
+        const fullyLocked = status.indexOf("DISAHKAN") > -1;
+        const myNik = String(currentUser.nik || "").trim();
+        const atasanNik = String((chainAtasan && chainAtasan.nik) || "").trim();
+        const isAtasan = myNik === atasanNik;
+        const editableStage = status === "DRAFT" || status === "DIBUKA_REVISI";
+        // Skor dikunci untuk atasan sendiri begitu sudah diajukan (bukan cuma
+        // saat DISAHKAN) -- supaya tidak ada perubahan diam-diam sementara
+        // dokumen sedang diproses di jenjang berikutnya.
+        const scoreLockedForAtasan = isAtasan && !editableStage;
+        const shouldLockInputs = fullyLocked || scoreLockedForAtasan;
+
+        document
+          .querySelectorAll("#hardSkillTable .skor-btn, #softSkillTable .skor-btn")
+          .forEach((b) => (b.disabled = shouldLockInputs));
+        document
+          .querySelectorAll(
+            "#hardSkillTable input[type='text'], #softSkillTable input[type='text']"
+          )
+          .forEach((i) => (i.disabled = shouldLockInputs));
+
         const accLevel = getAccessLevel(currentUser);
         const isUnlocker =
           accLevel === "SUPER_ADMIN" ||
-          (chainSahkan &&
-            (chainSahkan.email || "").trim().toLowerCase() === myEmail);
+          (chainSahkan && String(chainSahkan.nik || "").trim() === myNik);
 
         const lockBanner = document.getElementById("lockAlert");
         const btnBuka = document.getElementById("btnBukaKunci");
 
-        if (locked) {
-          document
-            .querySelectorAll(
-              "#hardSkillTable .skor-btn, #softSkillTable .skor-btn"
-            )
-            .forEach((b) => b.setAttribute("disabled", "disabled"));
-          document
-            .querySelectorAll(
-              "#hardSkillTable input[type='text'], #softSkillTable input[type='text']"
-            )
-            .forEach((i) => i.setAttribute("disabled", "disabled"));
+        if (fullyLocked) {
           [
             "btnSimpan",
             "btnAjukan",
             "btnVerifikasi1",
+            "btnKembalikan1",
             "btnVerifikasi2",
+            "btnKembalikan2",
             "btnSahkan",
-          ].forEach((id) =>
-            document.getElementById(id).classList.add("hidden")
-          );
+            "btnKembalikan3",
+          ].forEach((id) => document.getElementById(id).classList.add("hidden"));
           if (lockBanner) lockBanner.classList.remove("hidden");
           if (btnBuka) btnBuka.classList.toggle("hidden", !isUnlocker);
         } else {
           if (lockBanner) lockBanner.classList.add("hidden");
           if (btnBuka) btnBuka.classList.add("hidden");
+          refreshActionButtons();
         }
-      }
-
-      async function bukaKunci() {
-        const alasan = (
-          document.getElementById("alasanLog").value || ""
-        ).trim().replace(/[<>]/g, "");
-        if (!alasan) {
-          alert(
-            "Wajib mengisi ALASAN di kolom catatan sebelum membuka kunci dokumen."
-          );
-          return;
-        }
-        
-        const konfirmasi = prompt("PERINGATAN: Membuka kunci dokumen yang sudah DISAHKAN akan MEMBATALKAN status pengesahan.\n\nKetik kata 'REVISI' untuk melanjutkan:");
-        if (konfirmasi !== "REVISI") {
-          alert("Pembukaan kunci dibatalkan.");
-          return;
-        }
-        
-        await updateStatus("DIBUKA_REVISI");
-        renderKPI();
       }
 
       let pwForced = false;
@@ -1756,7 +2408,7 @@
           ) || { nama: email };
         if (
           !confirm(
-            `Reset password untuk ${k.nama}?\nPassword sementara akan di-set = NIK, dan yang bersangkutan wajib menggantinya saat login.`
+            `Reset password untuk ${k.nama}?\nPassword sementara ACAK akan dibuat, dan yang bersangkutan wajib menggantinya saat login.`
           )
         )
           return;
@@ -1774,29 +2426,34 @@
         }
       }
 
-      // FIKSASI ATASAN: Logika pencarian atasan kini sepenuhnya berlandaskan GSheet
+      // Rekap dashboard: sekarang pakai penelusuran struktur BERJENJANG (bukan
+      // cuma bawahan langsung / cocok-cocokan departemen), plus ARCHIVE_ADMIN
+      // ikut bisa melihat semua (read-only, tanpa tombol Reset PW).
       async function renderRekap() {
         const myEmail = (currentUser.email || "").trim().toLowerCase();
         const myDept = (currentUser.departemen || "").trim().toLowerCase();
         const accLevel = getAccessLevel(currentUser);
-
-        const directSubordinates = MOCK_STRUKTUR.filter(
-          (s) => (s.email_penilai || "").trim().toLowerCase() === myEmail
-        ).map((s) => (s.email_staf_dinilai || "").trim().toLowerCase());
+        const descendants = getAllDescendantsClient(myEmail);
+        const kataKunci = (document.getElementById("rekapSearch").value || "")
+          .trim()
+          .toLowerCase();
 
         const filteredStaf = MOCK_KARYAWAN.filter((k) => {
           const kEmail = (k.email || "").trim().toLowerCase();
           const kDept = (k.departemen || "").trim().toLowerCase();
-          if (accLevel === "SUPER_ADMIN") return true;
-          if (kEmail === myEmail) return true;
-          if (directSubordinates.includes(kEmail)) return true;
-          if (accLevel === "MANAGER" && kDept === myDept) return true;
-          return false;
+          let boleh = false;
+          if (accLevel === "SUPER_ADMIN" || accLevel === "ARCHIVE_ADMIN") boleh = true;
+          else if (kEmail === myEmail) boleh = true;
+          else if (descendants.includes(kEmail)) boleh = true;
+          else if (accLevel === "MANAGER" && kDept === myDept) boleh = true;
+          if (!boleh) return false;
+          if (kataKunci && !(k.nama || "").toLowerCase().includes(kataKunci)) return false;
+          return true;
         });
 
         let hasil = [];
         try {
-          const periode = document.getElementById("periodeFilter").value;
+          const periode = currentPeriodeRekap();
           const j = await apiCall("getHasil", { periode: periode });
           hasil = (j && j.data) || [];
         } catch (e) {
@@ -1806,12 +2463,13 @@
         const html = filteredStaf
           .map((k) => {
             const kEmail = (k.email || "").trim().toLowerCase();
+            const kNik = String(k.nik || "").trim();
             const sLink = MOCK_STRUKTUR.find(
               (s) =>
                 (s.email_staf_dinilai || "").trim().toLowerCase() === kEmail
             );
             let aEmail = sLink ? (sLink.email_penilai || "").trim().toLowerCase() : "";
-            
+
             let aObj = null;
             if (aEmail) {
               aObj = MOCK_KARYAWAN.find(
@@ -1820,9 +2478,7 @@
             }
             if (!aObj) aObj = { nama: "-" };
 
-            const rec = hasil.find(
-              (r) => (r.emailStaf || "").toLowerCase() === kEmail
-            );
+            const rec = hasil.find((r) => (r.nikStaf || "") === kNik);
             const hard = rec ? Number(rec.nilaiHard).toFixed(2) : "-";
             const soft = rec ? Number(rec.nilaiSoft).toFixed(2) : "-";
             const total = rec ? Number(rec.nilaiAkhir).toFixed(2) : "-";
@@ -1830,11 +2486,12 @@
             const statusStyle = rec
               ? "bg-teal-100 text-teal-700"
               : "bg-gray-100 text-gray-600";
+            const jabatanDept = [k.jabatan, k.departemen].filter(Boolean).join(" / ");
 
             return `
                 <tr class="hover:bg-gray-50 transition">
                     <td class="p-3 border font-bold text-slate-700">${k.nama}</td>
-                    <td class="p-3 border text-xs text-gray-500">${k.jabatan}</td>
+                    <td class="p-3 border text-xs text-gray-500">${jabatanDept}</td>
                     <td class="p-3 border text-xs text-teal-700 font-bold">${aObj.nama}</td>
                     <td class="p-3 border text-center text-blue-600">${hard}</td>
                     <td class="p-3 border text-center text-purple-600">${soft}</td>
@@ -1847,8 +2504,492 @@
                 </tr>`;
           })
           .join("");
-        document.getElementById("rekapTableBody").innerHTML = html;
+        document.getElementById("rekapTableBody").innerHTML =
+          html ||
+          `<tr><td colspan="7" class="p-4 text-center text-gray-400 italic">Tidak ada staf yang cocok.</td></tr>`;
+      }
+
+      /* ==================== GRAFIK PERFORMA ====================
+         3 tampilan:
+         1) Tren Perorangan  -- garis nilai akhir + hard/soft + grade sepanjang periode,
+            untuk diri sendiri (Staf) atau siapa pun yang boleh dilihat (Manager/SPV/Admin).
+         2) Perbandingan Tim -- bar chart nilai akhir seluruh bawahan untuk 1 periode
+            (khusus Manager/SPV/Admin, pakai ulang endpoint getHasil yang sudah
+            terfilter hak akses).
+         3) Per Departemen   -- tren rata-rata nilai akhir 1 departemen (atau semua
+            departemen untuk admin), dihitung agregat di server (tidak membocorkan
+            nilai individu ke non-admin). */
+
+      let chartOrangAkhir = null,
+        chartOrangRincian = null,
+        chartTim = null,
+        chartDept = null;
+
+      function siapkanGrafik() {
+        populateTahunSemester();
+
+        const accLevel = getAccessLevel(currentUser);
+        const punyaTim = ["SUPER_ADMIN", "ARCHIVE_ADMIN", "MANAGER", "SPV"].includes(accLevel);
+        document.getElementById("subTabTim").classList.toggle("hidden", !punyaTim);
+
+        switchTabGrafik("orang");
+        switchSubTabOrang("tren");
+        populateGrafikOrangDropdown();
+        populateGrafikDeptDropdown();
+      }
+
+      function switchTabGrafik(tab) {
+        document.getElementById("grafikOrangPanel").classList.toggle("hidden", tab !== "orang");
+        document.getElementById("grafikDeptPanel").classList.toggle("hidden", tab !== "dept");
+        document
+          .getElementById("tabGrafikOrang")
+          .classList.toggle("border-[#00A693]", tab === "orang");
+        document.getElementById("tabGrafikOrang").classList.toggle("text-[#00A693]", tab === "orang");
+        document.getElementById("tabGrafikOrang").classList.toggle("border-transparent", tab !== "orang");
+        document.getElementById("tabGrafikOrang").classList.toggle("text-gray-500", tab !== "orang");
+        document.getElementById("tabGrafikDept").classList.toggle("border-[#00A693]", tab === "dept");
+        document.getElementById("tabGrafikDept").classList.toggle("text-[#00A693]", tab === "dept");
+        document.getElementById("tabGrafikDept").classList.toggle("border-transparent", tab !== "dept");
+        document.getElementById("tabGrafikDept").classList.toggle("text-gray-500", tab !== "dept");
+        if (tab === "dept") muatGrafikDepartemen();
+      }
+
+      function switchSubTabOrang(sub) {
+        document.getElementById("grafikTrenPanel").classList.toggle("hidden", sub !== "tren");
+        document.getElementById("grafikTimPanel").classList.toggle("hidden", sub !== "tim");
+        const btnTren = document.getElementById("subTabTren");
+        const btnTim = document.getElementById("subTabTim");
+        btnTren.classList.toggle("bg-[#00A693]", sub === "tren");
+        btnTren.classList.toggle("text-white", sub === "tren");
+        btnTren.classList.toggle("bg-gray-100", sub !== "tren");
+        btnTren.classList.toggle("text-gray-600", sub !== "tren");
+        btnTim.classList.toggle("bg-[#00A693]", sub === "tim");
+        btnTim.classList.toggle("text-white", sub === "tim");
+        btnTim.classList.toggle("bg-gray-100", sub !== "tim");
+        btnTim.classList.toggle("text-gray-600", sub !== "tim");
+        if (sub === "tim" && !chartTim) muatGrafikTim();
+      }
+
+      // Dropdown "Tren Perorangan": diri sendiri + siapa pun yang boleh dilihat
+      // (bawahan berjenjang / semua utk admin), dengan pencarian nama.
+      function populateGrafikOrangDropdown() {
+        const sel = document.getElementById("grafikOrangSelector");
+        const myEmail = (currentUser.email || "").trim().toLowerCase();
+        const myDept = (currentUser.departemen || "").trim().toLowerCase();
+        const accLevel = getAccessLevel(currentUser);
+        const descendants = getAllDescendantsClient(myEmail);
+        const kataKunci = (document.getElementById("grafikOrangSearch").value || "")
+          .trim()
+          .toLowerCase();
+        const nikTerpilihSebelumnya = sel.value;
+
+        sel.innerHTML = "";
+        MOCK_KARYAWAN.forEach((k) => {
+          const kEmail = (k.email || "").trim().toLowerCase();
+          const kDept = (k.departemen || "").trim().toLowerCase();
+          let boleh = false;
+          if (accLevel === "SUPER_ADMIN" || accLevel === "ARCHIVE_ADMIN") boleh = true;
+          else if (kEmail === myEmail) boleh = true;
+          else if (descendants.includes(kEmail)) boleh = true;
+          else if (accLevel === "MANAGER" && kDept === myDept) boleh = true;
+          if (!boleh) return;
+          if (kataKunci && !(k.nama || "").toLowerCase().includes(kataKunci)) return;
+          const label = kEmail === myEmail ? `${k.nama} (Saya)` : `${k.nama} (${k.jabatan})`;
+          sel.innerHTML += `<option value="${k.nik}">${label}</option>`;
+        });
+
+        if (!sel.options.length) {
+          sel.innerHTML = `<option value="">-- Tidak ada staf yang cocok --</option>`;
+          return;
+        }
+        // Pertahankan pilihan sebelumnya kalau masih ada di daftar, else default ke diri sendiri
+        const tersedia = Array.from(sel.options).some((o) => o.value === nikTerpilihSebelumnya);
+        if (tersedia) sel.value = nikTerpilihSebelumnya;
+        else {
+          const myOpt = Array.from(sel.options).find((o) => o.value === (currentUser.nik || ""));
+          sel.value = myOpt ? myOpt.value : sel.options[0].value;
+        }
+        muatGrafikPerorangan();
+      }
+
+      const GRADE_WARNA = { A: "#00A693", B: "#3b82f6", C: "#f59e0b", D: "#f97316", E: "#dc2626" };
+
+      // Supaya grafik tidak pernah tampil kosong-melompong sebelum ada data
+      // (kesan "belum siap"), kalau memang belum ada riwayat penilaian sama
+      // sekali, kerangka sumbu tetap digambar pakai beberapa label periode di
+      // sekitar periode aktif, dengan nilai null (tidak digambar titik/garis,
+      // dan tooltip otomatis tidak muncul di titik kosong).
+      function _placeholderPeriodeSet_() {
+        const thNow = Number(document.getElementById("tahunFilter").value) || new Date().getFullYear();
+        return [
+          `Semester 1 ${thNow - 1}`,
+          `Semester 2 ${thNow - 1}`,
+          `Semester 1 ${thNow}`,
+          `Semester 2 ${thNow}`,
+        ];
+      }
+
+      async function muatGrafikPerorangan() {
+        const nik = document.getElementById("grafikOrangSelector").value;
+        if (!nik) return;
+        const j = await apiPost({ action: "getGrafikPerorangan", nik: nik });
+        if (!j.ok) {
+          document.getElementById("grafikOrangInfo").innerText = "Gagal memuat: " + (j.error || "");
+          return;
+        }
+        const data = j.data || [];
+        const staf = j.staf || {};
+        const kosong = data.length === 0;
+        document.getElementById("grafikOrangInfo").innerText = kosong
+          ? `${staf.nama || "Staf ini"} belum punya riwayat penilaian.`
+          : `${staf.nama} -- ${staf.jabatan} (${staf.departemen}) -- ${data.length} periode tercatat`;
+
+        const labels = kosong ? _placeholderPeriodeSet_() : data.map((d) => d.periode);
+        const nilaiAkhir = kosong ? labels.map(() => null) : data.map((d) => d.nilaiAkhir);
+        const nilaiHard = kosong ? labels.map(() => null) : data.map((d) => d.nilaiHard);
+        const nilaiSoft = kosong ? labels.map(() => null) : data.map((d) => d.nilaiSoft);
+        const warnaTitik = kosong
+          ? labels.map(() => "#00A693")
+          : data.map((d) => GRADE_WARNA[d.grade] || "#00A693");
+
+        if (chartOrangAkhir) chartOrangAkhir.destroy();
+        chartOrangAkhir = new Chart(document.getElementById("chartOrangAkhir"), {
+          type: "line",
+          data: {
+            labels: labels,
+            datasets: [
+              {
+                label: "Nilai Akhir",
+                data: nilaiAkhir,
+                borderColor: "#00A693",
+                backgroundColor: "#00A69333",
+                tension: 0.3,
+                pointBackgroundColor: warnaTitik,
+                pointRadius: kosong ? 0 : 6,
+                spanGaps: false,
+              },
+            ],
+          },
+          options: {
+            scales: { y: { min: 0, max: 5 } },
+            plugins: {
+              tooltip: {
+                callbacks: {
+                  afterLabel: (ctx) => (kosong ? "" : "Grade: " + (data[ctx.dataIndex].grade || "-")),
+                },
+              },
+            },
+          },
+        });
+
+        if (chartOrangRincian) chartOrangRincian.destroy();
+        chartOrangRincian = new Chart(document.getElementById("chartOrangRincian"), {
+          type: "bar",
+          data: {
+            labels: labels,
+            datasets: [
+              { label: "Hard Skill (70%)", data: nilaiHard, backgroundColor: "#3b82f6" },
+              { label: "Soft Skill (30%)", data: nilaiSoft, backgroundColor: "#a855f7" },
+            ],
+          },
+          options: { scales: { y: { min: 0, max: 5 } } },
+        });
+      }
+
+      async function muatGrafikTim() {
+        const th = document.getElementById("grafikTimTahun").value;
+        const sm = document.getElementById("grafikTimSemester").value;
+        const periode = `Semester ${sm} ${th}`;
+        const j = await apiCall("getHasil", { periode: periode });
+        const rows = (j && j.data) || [];
+        const kosong = rows.length === 0;
+
+        const labels = kosong ? ["Belum ada data"] : rows.map((r) => r.namaStaf);
+        const nilai = kosong ? [null] : rows.map((r) => r.nilaiAkhir);
+        const warna = kosong ? ["#e5e7eb"] : rows.map((r) => GRADE_WARNA[r.grade] || "#00A693");
+
+        if (chartTim) chartTim.destroy();
+        chartTim = new Chart(document.getElementById("chartTim"), {
+          type: "bar",
+          data: {
+            labels: labels,
+            datasets: [
+              {
+                label: `Nilai Akhir -- ${periode}`,
+                data: nilai,
+                backgroundColor: warna,
+              },
+            ],
+          },
+          options: {
+            indexAxis: "y",
+            scales: { x: { min: 0, max: 5 } },
+            plugins: { legend: { display: false } },
+          },
+        });
+      }
+
+      async function populateGrafikDeptDropdown() {
+        const sel = document.getElementById("grafikDeptSelector");
+        sel.innerHTML = `<option value="">Memuat...</option>`;
+        sel.disabled = true;
+
+        try {
+          // Panggil server TANPA parameter departemen -- server yang menentukan
+          // daftar departemen yang BOLEH dilihat pemanggil ini, ditelusuri
+          // berjenjang dari bawahannya (bukan sekadar field Departemen tunggal
+          // di profilnya). Ini yang memperbaiki kasus manager lintas-departemen
+          // seperti Lab & Cln Manager (Clinic + Laboratory) dan Sales &
+          // Marketing Manager (Sales & Marketing + Customer Service).
+          const j = await apiPost({ action: "getGrafikDepartemen" });
+          const depts = (j && j.ok && j.departemenList) || [];
+          sel.innerHTML = "";
+          if (!depts.length) {
+            sel.innerHTML = `<option value="">-- Tidak ada departemen --</option>`;
+            return;
+          }
+          depts
+            .slice()
+            .sort()
+            .forEach((d) => (sel.innerHTML += `<option value="${d}">${d}</option>`));
+          // Kalau cuma ada 1 pilihan (staf/SPV biasa), kunci dropdown -- tidak ada
+          // gunanya bisa diganti. Kalau lebih dari 1 (admin, atau manager
+          // lintas-departemen), tetap bisa dipilih bebas.
+          sel.disabled = depts.length <= 1;
+          muatGrafikDepartemen();
+        } catch (e) {
+          sel.innerHTML = `<option value="">Gagal memuat daftar departemen</option>`;
+        }
+      }
+
+      async function muatGrafikDepartemen() {
+        const dept = document.getElementById("grafikDeptSelector").value;
+        const j = await apiPost({ action: "getGrafikDepartemen", departemen: dept });
+        if (!j.ok) {
+          alert("Gagal memuat grafik departemen: " + (j.error || ""));
+          return;
+        }
+        const entry = (j.data || []).find((d) => d.departemen === dept) || { tren: [] };
+        const kosong = entry.tren.length === 0;
+        const labels = kosong ? _placeholderPeriodeSet_() : entry.tren.map((t) => t.periode);
+        const nilai = kosong ? labels.map(() => null) : entry.tren.map((t) => t.rataAkhir);
+
+        if (chartDept) chartDept.destroy();
+        chartDept = new Chart(document.getElementById("chartDept"), {
+          type: "line",
+          data: {
+            labels: labels,
+            datasets: [
+              {
+                label: `Rata-rata Nilai Akhir -- ${dept}`,
+                data: nilai,
+                borderColor: "#00A693",
+                backgroundColor: "#00A69333",
+                tension: 0.3,
+                pointRadius: kosong ? 0 : 5,
+                spanGaps: false,
+              },
+            ],
+          },
+          options: {
+            scales: { y: { min: 0, max: 5 } },
+            plugins: {
+              tooltip: {
+                callbacks: {
+                  afterLabel: (ctx) =>
+                    kosong ? "" : "Jumlah staf dinilai: " + (entry.tren[ctx.dataIndex].jumlahStaf || 0),
+                },
+              },
+            },
+          },
+        });
+      }
+
+      /* ==================== ARSIP & UNDUH MASSAL ====================
+         Khusus FULL_ADMIN & ARCHIVE_ADMIN. Mengambil semua dokumen berstatus
+         DISAHKAN untuk 1 periode (+opsional 1 departemen) dari server, lalu
+         merender tiap dokumen jadi PDF di browser (html2pdf.js) dan
+         membundelnya jadi satu file ZIP (JSZip) untuk diunduh langsung --
+         tanpa perlu izin tambahan ke Google Drive di sisi server. */
+
+      function siapkanArsip() {
+        populateTahunSemester();
+        const sel = document.getElementById("arsipDept");
+        const dept = [...new Set(MOCK_KARYAWAN.map((k) => (k.departemen || "").trim()).filter(Boolean))].sort();
+        sel.innerHTML = '<option value="">-- Semua Departemen --</option>';
+        dept.forEach((d) => {
+          sel.innerHTML += `<option value="${d}">${d}</option>`;
+        });
+      }
+
+      function _escHtml(s) {
+        return String(s == null ? "" : s)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+      }
+
+      // Bangun 1 halaman cetak (HTML string) untuk 1 dokumen hasil, dipakai
+      // khusus fitur unduh massal. Nama indikator diambil dari Detail_JSON
+      // yang sudah disusun server (tidak perlu Master_Indikator lagi di sini).
+      function bangunHtmlCetak(rec) {
+        const chain = resolveChainClient(rec.emailStaf) || {};
+        const atasan = chain.atasan || { nama: rec.namaPenilai || "-", jabatan: "-" };
+        const verif1 = chain.verif1 || { nama: "-", jabatan: "-" };
+        const verif2 = chain.verif2 || { nama: "-", jabatan: "-" };
+        const sahkan = chain.sahkan || { nama: "-", jabatan: "-" };
+        const d = rec.detail || { hard: [], soft: [] };
+
+        function baris(item, no) {
+          return `<tr>
+            <td class="p-2 border text-center">${no}</td>
+            <td class="p-2 border">${_escHtml(item.indikator || "-")}</td>
+            <td class="p-2 border text-center">${item.bobot}%</td>
+            <td class="p-2 border text-center font-bold">${item.skor}</td>
+            <td class="p-2 border">${_escHtml(item.catatan || "")}</td>
+          </tr>`;
+        }
+
+        const auditHtml = (rec.audit || [])
+          .map((a) => {
+            const waktu = a.ts ? new Date(a.ts).toLocaleString("id-ID", { hour12: false }) : "-";
+            const label = AKSI_LABEL[a.aksi] || a.aksi || "-";
+            const alasanBlok = a.alasan
+              ? `<div style="padding-left:10px;margin-top:2px;border-left:2px solid #99f6e4;color:#64748b;font-style:italic;">&ldquo;${_escHtml(a.alasan)}&rdquo;</div>`
+              : "";
+            return (
+              `<div style="border-bottom:1px solid #f3f4f6;padding-bottom:4px;margin-bottom:4px;">` +
+              `<div>[${waktu}] <b>${_escHtml(a.oleh)} (${_escHtml(a.jabatan)})</b>: ${label} &rarr; ${a.statusBaru}</div>` +
+              alasanBlok +
+              `</div>`
+            );
+          })
+          .join("");
+
+        return `
+          <div style="width:1050px;padding:24px;font-family:Arial,Helvetica,sans-serif;color:#1f2937;background:#fff;">
+            <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #00A693;padding-bottom:10px;margin-bottom:14px;">
+              <div style="font-size:18px;font-weight:900;color:#00A693;">GRANOSTIC CENTER</div>
+              <div style="font-size:13px;font-weight:bold;">FORM PENILAIAN KPI -- ${_escHtml(rec.periode)}</div>
+            </div>
+            <table style="width:100%;font-size:12px;margin-bottom:14px;">
+              <tr><td style="color:#6b7280;width:120px;padding:2px 0;">Nama Staf</td><td style="font-weight:bold;padding:2px 0;">${_escHtml(rec.namaStaf)}</td>
+                  <td style="color:#6b7280;width:120px;padding:2px 0;">Departemen</td><td style="font-weight:bold;padding:2px 0;">${_escHtml(rec.departemen)}</td></tr>
+              <tr><td style="color:#6b7280;padding:2px 0;">Jabatan</td><td style="font-weight:bold;padding:2px 0;">${_escHtml(rec.jabatan)}</td>
+                  <td style="color:#6b7280;padding:2px 0;">Status</td><td style="font-weight:bold;padding:2px 0;">${_escHtml(rec.status)}</td></tr>
+            </table>
+
+            <div style="font-size:12px;font-weight:bold;background:#f0fdfa;padding:6px 10px;margin-bottom:4px;">HARD SKILL (bobot 70%)</div>
+            <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:12px;">
+              <thead><tr style="background:#f3f4f6;">
+                <th class="p-2 border" style="width:30px;">No</th><th class="p-2 border">Indikator</th>
+                <th class="p-2 border" style="width:60px;">Bobot</th><th class="p-2 border" style="width:50px;">Skor</th>
+                <th class="p-2 border">Catatan Realisasi</th>
+              </tr></thead>
+              <tbody>${(d.hard || []).map((it, i) => baris(it, i + 1)).join("")}</tbody>
+            </table>
+
+            <div style="font-size:12px;font-weight:bold;background:#faf5ff;padding:6px 10px;margin-bottom:4px;">SOFT SKILL (bobot 30%)</div>
+            <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:14px;">
+              <thead><tr style="background:#f3f4f6;">
+                <th class="p-2 border" style="width:30px;">No</th><th class="p-2 border">Indikator</th>
+                <th class="p-2 border" style="width:60px;">Bobot</th><th class="p-2 border" style="width:50px;">Skor</th>
+                <th class="p-2 border">Catatan Realisasi</th>
+              </tr></thead>
+              <tbody>${(d.soft || []).map((it, i) => baris(it, i + 1)).join("")}</tbody>
+            </table>
+
+            <table style="width:60%;margin-bottom:16px;font-size:12px;">
+              <tr><td style="padding:3px 0;color:#6b7280;">Nilai Hard Skill</td><td style="padding:3px 0;font-weight:bold;">${Number(rec.nilaiHard).toFixed(2)}</td></tr>
+              <tr><td style="padding:3px 0;color:#6b7280;">Nilai Soft Skill</td><td style="padding:3px 0;font-weight:bold;">${Number(rec.nilaiSoft).toFixed(2)}</td></tr>
+              <tr><td style="padding:3px 0;color:#6b7280;">Nilai Akhir</td><td style="padding:3px 0;font-weight:900;color:#00A693;font-size:14px;">${Number(rec.nilaiAkhir).toFixed(2)} (Grade ${_escHtml(rec.grade)})</td></tr>
+            </table>
+
+            <table style="width:100%;text-align:center;font-size:11px;margin-bottom:16px;">
+              <tr>
+                <td style="padding:8px;">Dinilai oleh<br><b>${_escHtml(atasan.nama)}</b><br>${_escHtml(atasan.jabatan)}</td>
+                <td style="padding:8px;">Verifikasi 1<br><b>${_escHtml(verif1.nama)}</b><br>${_escHtml(verif1.jabatan)}</td>
+                <td style="padding:8px;">Verifikasi HR<br><b>${_escHtml(verif2.nama)}</b><br>${_escHtml(verif2.jabatan)}</td>
+                <td style="padding:8px;">Disahkan oleh<br><b>${_escHtml(sahkan.nama)}</b><br>${_escHtml(sahkan.jabatan)}</td>
+              </tr>
+            </table>
+
+            <div style="font-size:10px;font-weight:bold;text-transform:uppercase;border-bottom:1px solid #e5e7eb;padding-bottom:4px;margin-bottom:6px;">Audit Trail / Riwayat Persetujuan</div>
+            <div style="font-size:10px;font-family:monospace;">${auditHtml || "-"}</div>
+          </div>`;
+      }
+
+      async function unduhMassal() {
+        const th = document.getElementById("arsipTahun").value;
+        const sm = document.getElementById("arsipSemester").value;
+        const dept = document.getElementById("arsipDept").value;
+        const periode = `Semester ${sm} ${th}`;
+        const progressEl = document.getElementById("massalProgress");
+        const btn = document.getElementById("btnUnduhMassal");
+
+        btn.disabled = true;
+        progressEl.innerText = "Mengambil daftar dokumen dari server...";
+        try {
+          const j = await apiPost({
+            action: "getHasilMassal",
+            periode: periode,
+            departemen: dept,
+          });
+          if (!j.ok) {
+            alert("Gagal: " + (j.error || "tidak diketahui"));
+            return;
+          }
+          const rows = j.data || [];
+          if (!rows.length) {
+            alert(
+              `Tidak ada dokumen berstatus DISAHKAN untuk ${periode}${dept ? " / " + dept : ""}.`
+            );
+            return;
+          }
+
+          const zip = new JSZip();
+          const offscreen = document.getElementById("massalRenderArea");
+
+          for (let i = 0; i < rows.length; i++) {
+            const rec = rows[i];
+            progressEl.innerText = `Memproses ${i + 1}/${rows.length}: ${rec.namaStaf}...`;
+            offscreen.innerHTML = bangunHtmlCetak(rec);
+            await new Promise((r) => setTimeout(r, 30)); // beri waktu browser melayout sebelum snapshot
+
+            const pdfBlob = await html2pdf()
+              .set({
+                margin: 8,
+                html2canvas: { scale: 2, useCORS: true },
+                jsPDF: { unit: "mm", format: "a4", orientation: "landscape" },
+              })
+              .from(offscreen.firstElementChild)
+              .outputPdf("blob");
+
+            const namaAman = (rec.namaStaf || "staf").replace(/[\\/:*?"<>|]/g, "_");
+            const folderDept = (rec.departemen || "Lainnya").replace(/[\\/:*?"<>|]/g, "_");
+            zip.file(`${folderDept}/${namaAman} - ${rec.periode}.pdf`, pdfBlob);
+          }
+
+          progressEl.innerText = "Menyusun file ZIP...";
+          const blob = await zip.generateAsync({ type: "blob" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `KPI_${(dept || "SemuaDept").replace(/\s+/g, "_")}_${periode.replace(/\s+/g, "_")}.zip`;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          URL.revokeObjectURL(url);
+          offscreen.innerHTML = "";
+          progressEl.innerText = `Selesai. ${rows.length} dokumen diunduh dalam 1 file ZIP.`;
+        } catch (err) {
+          alert("Gagal membuat arsip: " + err.message);
+          progressEl.innerText = "";
+        } finally {
+          btn.disabled = false;
+        }
       }
     </script>
+
   </body>
 </html>
